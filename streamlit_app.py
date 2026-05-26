@@ -1,8 +1,10 @@
 import json
 import os
 import re
+import smtplib
 import uuid
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,12 @@ DATA_DIR = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
 SUBMISSIONS_DIR = DATA_DIR / "submissions"
 UPLOADS_DIR = DATA_DIR / "uploads"
 ADMIN_PASSWORD = os.getenv("ANAMNES_ADMIN_PASSWORD", "admin")
+SMTP_HOST = os.getenv("ANAMNES_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("ANAMNES_SMTP_PORT", "587"))
+SMTP_USER = os.getenv("ANAMNES_SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("ANAMNES_SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("ANAMNES_SMTP_FROM", SMTP_USER)
+SMTP_TO = os.getenv("ANAMNES_SMTP_TO", "")
 
 MAIN_REASONS = {
     "thyroid": "Щитовидная железа",
@@ -395,6 +403,49 @@ def save_submission(submission: dict[str, Any], uploaded_files: list[Any]) -> st
     return submission_id
 
 
+def email_notifications_configured() -> bool:
+    return all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_TO])
+
+
+def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
+    if not email_notifications_configured():
+        return False, "Email не настроен: задайте SMTP-переменные окружения."
+
+    patient = submission["patient"]
+    reason = MAIN_REASONS.get(submission["main_reason"], submission["main_reason"])
+    subject = f"Новая анкета эндокринолога: {patient.get('full_name', 'без имени')}"
+    body = (
+        "Получена новая анкета пациента.\n\n"
+        f"Пациент: {format_answer(patient.get('full_name'))}\n"
+        f"Телефон: {format_answer(patient.get('phone'))}\n"
+        f"Причина обращения: {reason}\n"
+        f"ID анкеты: {submission['id']}\n"
+        f"Дата UTC: {submission['created_at']}\n\n"
+        "Резюме:\n"
+        f"{submission.get('summary', '')}\n\n"
+        "Загруженные пациентом файлы не прикладываются к письму; они доступны в кабинете врача."
+    )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = SMTP_FROM
+    message["To"] = SMTP_TO
+    message.set_content(body)
+    message.add_attachment(
+        json.dumps(submission, ensure_ascii=False, indent=2).encode("utf-8"),
+        maintype="application",
+        subtype="json",
+        filename=f"submission_{submission['id']}.json",
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+        smtp.starttls()
+        smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(message)
+
+    return True, f"Копия анкеты отправлена на {SMTP_TO}."
+
+
 def load_submissions() -> list[dict[str, Any]]:
     init_storage()
     submissions = []
@@ -507,6 +558,14 @@ def render_patient_form() -> None:
     submission_id = save_submission(submission, uploaded_files or [])
     st.success("Анкета отправлена врачу.")
     st.info(f"Номер анкеты: {submission_id}")
+    try:
+        email_sent, email_message = send_submission_email(submission)
+        if email_sent:
+            st.success(email_message)
+        else:
+            st.warning(email_message)
+    except Exception as exc:
+        st.warning(f"Анкета сохранена, но email-копию отправить не удалось: {exc}")
     with st.expander("Предварительное резюме", expanded=True):
         st.text(submission["summary"])
 

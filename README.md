@@ -41,6 +41,29 @@ admin
 
 Для реального сервера пароль по умолчанию нужно обязательно заменить.
 
+## Email-копия анкеты
+
+После успешной отправки анкеты приложение может продублировать резюме врачу на email. Это опционально: если SMTP-переменные не заданы, анкета просто сохраняется локально.
+
+Для Gmail нужен не обычный пароль от аккаунта, а **App Password**:
+
+1. Включить двухфакторную аутентификацию Google.
+2. Создать пароль приложения: Google Account -> Security -> 2-Step Verification -> App passwords.
+3. Указать его в `ANAMNES_SMTP_PASSWORD`.
+
+Пример переменных:
+
+```bash
+export ANAMNES_SMTP_HOST="smtp.gmail.com"
+export ANAMNES_SMTP_PORT="587"
+export ANAMNES_SMTP_USER="your-gmail@gmail.com"
+export ANAMNES_SMTP_PASSWORD="gmail-app-password"
+export ANAMNES_SMTP_FROM="your-gmail@gmail.com"
+export ANAMNES_SMTP_TO="igor.korsa@gmail.com"
+```
+
+Письмо содержит текстовое резюме и JSON-анкеты во вложении. Загруженные пациентом файлы не прикладываются к письму; они доступны в кабинете врача.
+
 ## Хранение данных
 
 По умолчанию данные сохраняются в папку:
