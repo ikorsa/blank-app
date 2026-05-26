@@ -82,6 +82,33 @@ def selectbox_from_map(label: str, options: dict[str, str], key: str) -> str:
 
 def render_common_questions() -> dict[str, Any]:
     st.subheader("Общий анамнез")
+    chronic_conditions = st.multiselect(
+        "Какие хронические заболевания есть?",
+        [
+            "Нет хронических заболеваний",
+            "Артериальная гипертония",
+            "Сахарный диабет",
+            "Заболевания щитовидной железы",
+            "Ишемическая болезнь сердца / стенокардия",
+            "Аритмия",
+            "Инфаркт или инсульт в прошлом",
+            "Хронические заболевания почек",
+            "Хронические заболевания печени",
+            "Заболевания желудка/кишечника",
+            "Бронхиальная астма / ХОБЛ",
+            "Аутоиммунные заболевания",
+            "Онкологические заболевания",
+            "Остеопороз",
+            "Депрессия / тревожное расстройство",
+            "Не знаю",
+            "Другое",
+        ],
+        key="common_chronic",
+    )
+    chronic_conditions_other = ""
+    if "Другое" in chronic_conditions:
+        chronic_conditions_other = st.text_input("Уточните хронические заболевания", key="common_chronic_other")
+
     return {
         "complaints": st.text_area("Какие жалобы беспокоят сейчас?", key="common_complaints"),
         "complaints_started": st.selectbox(
@@ -95,7 +122,8 @@ def render_common_questions() -> dict[str, Any]:
             ],
             key="common_complaints_started",
         ),
-        "chronic_conditions": st.text_area("Какие хронические заболевания есть?", key="common_chronic"),
+        "chronic_conditions": chronic_conditions,
+        "chronic_conditions_other": chronic_conditions_other,
         "surgeries": st.text_area("Были ли операции?", key="common_surgeries"),
         "medications": st.text_area("Какие лекарства принимаете постоянно?", key="common_medications"),
         "allergies": st.text_area("Есть ли аллергии на лекарства?", key="common_allergies"),
@@ -339,6 +367,7 @@ def build_summary(submission: dict[str, Any]) -> str:
         "",
         "Общий анамнез:",
         f"- Хронические заболевания: {format_answer(common.get('chronic_conditions'))}",
+        f"- Уточнение по хроническим заболеваниям: {format_answer(common.get('chronic_conditions_other'))}",
         f"- Операции: {format_answer(common.get('surgeries'))}",
         f"- Постоянные лекарства: {format_answer(common.get('medications'))}",
         f"- Аллергии: {format_answer(common.get('allergies'))}",
