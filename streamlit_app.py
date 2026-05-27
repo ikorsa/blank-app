@@ -370,7 +370,38 @@ def render_diabetes_branch() -> dict[str, Any]:
         ),
     }
     if insulin == "Да":
-        data["insulin_details"] = st.text_input("Какой инсулин и сколько единиц в сутки?", key="diabetes_insulin_details")
+        data["insulin_types"] = st.multiselect(
+            "Какой инсулин используете?",
+            [
+                "Ультракороткий: НовоРапид / Хумалог / Апидра / Фиасп",
+                "Короткий: Актрапид / Хумулин Регуляр",
+                "Средней продолжительности: Протафан / НПХ",
+                "Длительный: Лантус / Левемир / Туджео / Тресиба",
+                "Смешанный: НовоМикс / Хумалог Микс / Хумулин М3",
+                "Помпа",
+                "Не помню",
+                "Другое",
+            ],
+            key="diabetes_insulin_types",
+        )
+        data["insulin_regimen"] = st.multiselect(
+            "Какой режим инсулинотерапии?",
+            [
+                "1 раз в день",
+                "2 раза в день",
+                "Перед каждым приемом пищи",
+                "Базис-болюсная схема",
+                "Коррекция по сахару",
+                "Инсулиновая помпа",
+                "Не знаю",
+                "Другое",
+            ],
+            key="diabetes_insulin_regimen",
+        )
+        data["insulin_daily_units"] = st.text_input(
+            "Сколько единиц в сутки или по какой схеме?",
+            key="diabetes_insulin_daily_units",
+        )
     return data
 
 
