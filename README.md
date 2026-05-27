@@ -43,6 +43,7 @@ sudo systemctl restart anamnes
 ```bash
 export ANAMNES_ADMIN_PASSWORD="сложный-пароль-для-врача"
 export ANAMNES_DATA_DIR="/opt/anamnes/data"
+export ANAMNES_DOCTORS_FILE="/opt/anamnes/data/doctors.json"
 ```
 
 Если `ANAMNES_ADMIN_PASSWORD` не задан, используется тестовый пароль:
@@ -52,6 +53,50 @@ admin
 ```
 
 Для реального сервера пароль по умолчанию нужно обязательно заменить.
+
+## Несколько врачей и персональные ссылки
+
+Для каждого врача можно завести отдельную ссылку пациента:
+
+```text
+https://anamnes.ikorsakov.tech/?doctor=ivanova
+https://anamnes.ikorsakov.tech/?doctor=petrov
+```
+
+Пациентская анкета будет автоматически привязана к врачу из параметра `doctor`.
+В кабинете врач входит своим логином и паролем и видит только свои анкеты.
+Администратор входит логином `admin` и паролем `ANAMNES_ADMIN_PASSWORD`, видит все анкеты.
+
+Пример файла врачей есть в:
+
+```text
+config/doctors.example.json
+```
+
+На сервере его лучше хранить вне git, например:
+
+```bash
+cp config/doctors.example.json /opt/anamnes/data/doctors.json
+nano /opt/anamnes/data/doctors.json
+sudo systemctl restart anamnes
+```
+
+Формат врача:
+
+```json
+{
+  "id": "ivanova",
+  "name": "Иванова Анна Сергеевна",
+  "specialty": "Эндокринолог",
+  "email": "ivanova@example.com",
+  "telegram_chat_id": "123456789",
+  "password": "сложный-пароль-врача"
+}
+```
+
+Если у врача указан `email`, email-копия анкеты будет отправляться этому врачу. Если указан `telegram_chat_id`, Telegram-уведомление будет отправляться ему.
+
+Красивые ссылки вида `/ivanova` можно позже сделать через Nginx redirect/rewrite на `/?doctor=ivanova`.
 
 ## Email-копия анкеты
 

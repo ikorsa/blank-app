@@ -24,6 +24,7 @@ APP_TITLE = "Анамнез эндокринолога"
 DATA_DIR = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
 SUBMISSIONS_DIR = DATA_DIR / "submissions"
 UPLOADS_DIR = DATA_DIR / "uploads"
+DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
 ADMIN_PASSWORD = os.getenv("ANAMNES_ADMIN_PASSWORD", "admin")
 SMTP_HOST = os.getenv("ANAMNES_SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("ANAMNES_SMTP_PORT", "587"))
@@ -68,6 +69,97 @@ SUBMISSION_STATUSES = {
 def init_storage() -> None:
     SUBMISSIONS_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def default_doctor() -> dict[str, str]:
+    return {
+        "id": "default",
+        "name": "Врач по умолчанию",
+        "specialty": "Эндокринолог",
+        "email": SMTP_TO,
+        "telegram_chat_id": TELEGRAM_CHAT_ID,
+        "password": ADMIN_PASSWORD,
+    }
+
+
+def normalize_doctor(doctor: dict[str, Any]) -> dict[str, str]:
+    doctor_id = safe_filename(str(doctor.get("id") or doctor.get("slug") or "")).lower()
+    return {
+        "id": doctor_id,
+        "name": str(doctor.get("name") or doctor_id or "Врач"),
+        "specialty": str(doctor.get("specialty") or "Эндокринолог"),
+        "email": str(doctor.get("email") or ""),
+        "telegram_chat_id": str(doctor.get("telegram_chat_id") or ""),
+        "password": str(doctor.get("password") or ""),
+    }
+
+
+def load_doctors() -> list[dict[str, str]]:
+    if not DOCTORS_FILE.exists():
+        return [default_doctor()]
+    try:
+        raw = json.loads(DOCTORS_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return [default_doctor()]
+
+    items = raw.get("doctors", raw) if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return [default_doctor()]
+
+    doctors = [normalize_doctor(item) for item in items if isinstance(item, dict)]
+    doctors = [doctor for doctor in doctors if doctor["id"] and doctor["name"]]
+    return doctors or [default_doctor()]
+
+
+def public_doctor_info(doctor: dict[str, str] | None) -> dict[str, str]:
+    if not doctor:
+        return {"id": "", "name": "Не выбран", "specialty": "", "email": "", "telegram_chat_id": ""}
+    return {
+        "id": doctor.get("id", ""),
+        "name": doctor.get("name", ""),
+        "specialty": doctor.get("specialty", ""),
+        "email": doctor.get("email", ""),
+        "telegram_chat_id": doctor.get("telegram_chat_id", ""),
+    }
+
+
+def get_query_param(name: str) -> str:
+    value = st.query_params.get(name, "")
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
+
+
+def get_doctor_by_id(doctors: list[dict[str, str]], doctor_id: str) -> dict[str, str] | None:
+    return next((doctor for doctor in doctors if doctor["id"] == doctor_id), None)
+
+
+def doctor_display_name(doctor: dict[str, str] | None) -> str:
+    if not doctor:
+        return "Врач не выбран"
+    specialty = doctor.get("specialty") or "Врач"
+    return f"{doctor.get('name', 'Врач')} ({specialty})"
+
+
+def resolve_patient_doctor(doctors: list[dict[str, str]]) -> dict[str, str]:
+    doctor_id = get_query_param("doctor").strip().lower()
+    doctor = get_doctor_by_id(doctors, doctor_id) if doctor_id else None
+    if doctor:
+        return doctor
+
+    if doctor_id:
+        st.warning(f"Врач с кодом '{doctor_id}' не найден. Выберите врача из списка.")
+
+    if len(doctors) == 1:
+        return doctors[0]
+
+    selected_id = st.selectbox(
+        "Выберите врача",
+        [doctor["id"] for doctor in doctors],
+        format_func=lambda item: doctor_display_name(get_doctor_by_id(doctors, item)),
+        key="patient_doctor_select",
+    )
+    return get_doctor_by_id(doctors, selected_id) or doctors[0]
 
 
 def now_iso() -> str:
@@ -619,6 +711,7 @@ def render_branches(reasons: list[str], sex: str) -> dict[str, Any]:
 
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
+    assigned_doctor = submission.get("assigned_doctor", {})
     common = submission["common"]
     branch = submission["branch"]
     files = submission["files"]
@@ -647,6 +740,7 @@ def build_summary(submission: dict[str, Any]) -> str:
         [
             "",
             "ПАЦИЕНТ",
+            f"- Врач: {doctor_display_name(assigned_doctor)}",
             f"- Телефон: {format_answer(patient.get('phone'))}",
             f"- Город: {format_answer(patient.get('city'))}",
             f"- Пол: {format_answer(patient.get('sex'))}",
@@ -760,7 +854,8 @@ def email_notifications_configured() -> bool:
 
 
 def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
-    if not email_notifications_configured():
+    recipient = submission.get("assigned_doctor", {}).get("email") or SMTP_TO
+    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, recipient]):
         return False, "Email не настроен: задайте SMTP-переменные окружения."
 
     patient = submission["patient"]
@@ -781,7 +876,7 @@ def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = SMTP_FROM
-    message["To"] = SMTP_TO
+    message["To"] = recipient
     message.set_content(body)
     message.add_attachment(
         json.dumps(submission, ensure_ascii=False, indent=2).encode("utf-8"),
@@ -795,7 +890,7 @@ def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
         smtp.login(SMTP_USER, SMTP_PASSWORD)
         smtp.send_message(message)
 
-    return True, f"Копия анкеты отправлена на {SMTP_TO}."
+    return True, f"Копия анкеты отправлена на {recipient}."
 
 
 def telegram_notifications_configured() -> bool:
@@ -803,7 +898,8 @@ def telegram_notifications_configured() -> bool:
 
 
 def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
-    if not telegram_notifications_configured():
+    chat_id = submission.get("assigned_doctor", {}).get("telegram_chat_id") or TELEGRAM_CHAT_ID
+    if not (TELEGRAM_BOT_TOKEN and chat_id):
         return False, "Telegram-уведомление не настроено."
 
     patient = submission["patient"]
@@ -818,7 +914,7 @@ def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
             f"Открыть кабинет: {PUBLIC_URL}",
         ]
     )
-    payload = urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text})
+    payload = urlencode({"chat_id": chat_id, "text": text})
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?{payload}"
     with urlopen(url, timeout=15) as response:
         if response.status != 200:
@@ -871,11 +967,22 @@ def update_doctor_fields(
     write_submission_record(submission)
 
 
+def get_submission_doctor_id(submission: dict[str, Any]) -> str:
+    return str(submission.get("assigned_doctor", {}).get("id") or "")
+
+
+def doctor_can_view_submission(submission: dict[str, Any]) -> bool:
+    if st.session_state.get("doctor_role") == "admin":
+        return True
+    return get_submission_doctor_id(submission) == st.session_state.get("doctor_id")
+
+
 def filter_submissions(
     submissions: list[dict[str, Any]],
     search_query: str,
     reason_filter: str,
     status_filter: str,
+    doctor_filter: str = "Все",
 ) -> list[dict[str, Any]]:
     query = search_query.strip().lower()
     filtered = []
@@ -883,12 +990,14 @@ def filter_submissions(
         patient = item.get("patient", {})
         reason_labels = get_submission_reason_labels(item)
         reason_label = ", ".join(reason_labels)
+        doctor_label = doctor_display_name(item.get("assigned_doctor"))
         haystack = " ".join(
             [
                 str(patient.get("full_name", "")),
                 str(patient.get("phone", "")),
                 str(patient.get("city", "")),
                 str(reason_label),
+                str(doctor_label),
                 str(item.get("id", "")),
             ]
         ).lower()
@@ -898,6 +1007,8 @@ def filter_submissions(
             continue
         if status_filter != "Все" and item.get("status", "submitted") != status_filter:
             continue
+        if doctor_filter != "Все" and doctor_label != doctor_filter:
+            continue
         filtered.append(item)
     return filtered
 
@@ -905,6 +1016,9 @@ def filter_submissions(
 def render_patient_form() -> None:
     st.title(APP_TITLE)
     st.caption("Предварительный сбор анамнеза перед консультацией эндокринолога")
+    doctors = load_doctors()
+    assigned_doctor = resolve_patient_doctor(doctors)
+    st.info(f"Анкета будет отправлена врачу: {doctor_display_name(assigned_doctor)}")
 
     with st.expander("Что важно знать перед заполнением", expanded=True):
         st.write(
@@ -964,6 +1078,7 @@ def render_patient_form() -> None:
         "id": "preview",
         "created_at": now_iso(),
         "status": "submitted",
+        "assigned_doctor": public_doctor_info(assigned_doctor),
         "main_reasons": selected_reasons,
         "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
         "patient": {
@@ -1052,15 +1167,27 @@ def render_patient_form() -> None:
 def render_doctor_dashboard() -> None:
     st.title("Кабинет врача")
     st.caption("Просмотр заполненных анкет и загруженных файлов")
+    doctors = load_doctors()
 
     if ADMIN_PASSWORD == "admin":
         st.warning("Используется пароль по умолчанию. На сервере задайте ANAMNES_ADMIN_PASSWORD.")
 
     if not st.session_state.get("doctor_authenticated"):
+        login = st.text_input("Логин врача или admin", value="admin")
         password = st.text_input("Пароль врача", type="password")
         if st.button("Войти"):
-            if password == ADMIN_PASSWORD:
+            doctor = get_doctor_by_id(doctors, login.strip().lower())
+            if login.strip().lower() == "admin" and password == ADMIN_PASSWORD:
                 st.session_state["doctor_authenticated"] = True
+                st.session_state["doctor_role"] = "admin"
+                st.session_state["doctor_id"] = ""
+                st.session_state["doctor_name"] = "Администратор"
+                st.rerun()
+            elif doctor and password and password == doctor.get("password"):
+                st.session_state["doctor_authenticated"] = True
+                st.session_state["doctor_role"] = "doctor"
+                st.session_state["doctor_id"] = doctor["id"]
+                st.session_state["doctor_name"] = doctor["name"]
                 st.rerun()
             else:
                 st.error("Неверный пароль.")
@@ -1068,9 +1195,17 @@ def render_doctor_dashboard() -> None:
 
     if st.button("Выйти"):
         st.session_state["doctor_authenticated"] = False
+        st.session_state["doctor_role"] = ""
+        st.session_state["doctor_id"] = ""
+        st.session_state["doctor_name"] = ""
         st.rerun()
 
-    submissions = load_submissions()
+    st.caption(
+        f"Роль: {'администратор' if st.session_state.get('doctor_role') == 'admin' else 'врач'}; "
+        f"пользователь: {st.session_state.get('doctor_name')}"
+    )
+
+    submissions = [item for item in load_submissions() if doctor_can_view_submission(item)]
     if not submissions:
         st.info("Пока нет отправленных анкет.")
         return
@@ -1085,7 +1220,8 @@ def render_doctor_dashboard() -> None:
     metric_col4.metric("С красными флагами", red_flag_count)
 
     st.subheader("Поиск и фильтры")
-    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    filter_columns = st.columns(4 if st.session_state.get("doctor_role") == "admin" else 3)
+    filter_col1, filter_col2, filter_col3 = filter_columns[:3]
     with filter_col1:
         search_query = st.text_input("Поиск по ФИО, телефону, городу или ID", key="doctor_search")
     with filter_col2:
@@ -1100,8 +1236,13 @@ def render_doctor_dashboard() -> None:
             format_func=lambda value: SUBMISSION_STATUSES.get(value, value),
             key="doctor_status_filter",
         )
+    doctor_filter = "Все"
+    if st.session_state.get("doctor_role") == "admin":
+        with filter_columns[3]:
+            doctor_options = ["Все"] + sorted({doctor_display_name(item.get("assigned_doctor")) for item in submissions})
+            doctor_filter = st.selectbox("Врач", doctor_options, key="doctor_filter")
 
-    filtered_submissions = filter_submissions(submissions, search_query, reason_filter, status_filter)
+    filtered_submissions = filter_submissions(submissions, search_query, reason_filter, status_filter, doctor_filter)
     if not filtered_submissions:
         st.info("По выбранным фильтрам анкет нет.")
         return
@@ -1110,6 +1251,7 @@ def render_doctor_dashboard() -> None:
         item["id"]: (
             f"{'!' if get_red_flags(item) else ('✓' if item.get('status') == 'viewed' else '•')} "
             f"{item['patient'].get('full_name', 'Без имени')} | "
+            f"{doctor_display_name(item.get('assigned_doctor'))} | "
             f"{format_submission_reasons(item)} | "
             f"{SUBMISSION_STATUSES.get(item.get('status', 'submitted'), item.get('status'))} | "
             f"{item.get('created_at')}"
@@ -1188,6 +1330,7 @@ def render_doctor_dashboard() -> None:
     st.json(
         {
             "patient": submission.get("patient"),
+            "assigned_doctor": submission.get("assigned_doctor"),
             "urgent_symptoms": submission.get("urgent_symptoms"),
             "main_reasons": get_submission_reason_labels(submission),
             "common": submission.get("common"),

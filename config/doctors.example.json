@@ -1,0 +1,20 @@
+{
+  "doctors": [
+    {
+      "id": "ivanova",
+      "name": "Иванова Анна Сергеевна",
+      "specialty": "Эндокринолог",
+      "email": "ivanova@example.com",
+      "telegram_chat_id": "",
+      "password": "change-me"
+    },
+    {
+      "id": "petrov",
+      "name": "Петров Иван Петрович",
+      "specialty": "Эндокринолог",
+      "email": "petrov@example.com",
+      "telegram_chat_id": "",
+      "password": "change-me-too"
+    }
+  ]
+}
