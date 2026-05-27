@@ -133,6 +133,79 @@ export ANAMNES_TELEGRAM_CHAT_ID="123456789"
 
 Если переменные не заданы, приложение просто не отправляет Telegram-уведомления.
 
+## Telegram-бот для пациентов
+
+Отдельный файл `telegram_bot.py` запускает простого Telegram-бота-оболочку. Он не собирает анкету внутри Telegram, а выдает пациенту кнопку на веб-анкету нужного врача.
+
+Ссылка для пациента:
+
+```text
+https://t.me/<bot_username>?start=doctor_ivanova
+```
+
+Бот откроет анкету:
+
+```text
+https://anamnes.ikorsakov.tech/?doctor=ivanova
+```
+
+Создание:
+
+1. В Telegram открыть `@BotFather`.
+2. Выполнить `/newbot`.
+3. Скопировать token.
+4. Добавить в `/etc/anamnes.env`:
+
+```env
+ANAMNES_PUBLIC_URL=https://anamnes.ikorsakov.tech
+ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN=123456:patient-bot-token
+ANAMNES_DOCTORS_FILE=/opt/anamnes/data/doctors.json
+```
+
+Ручная проверка на сервере:
+
+```bash
+cd /opt/anamnes
+source .venv/bin/activate
+python telegram_bot.py
+```
+
+Команды бота:
+
+- `/start doctor_ivanova` — выдать ссылку врача `ivanova`;
+- `/doctors` — список врачей из `doctors.json`;
+- `/help` — помощь.
+
+Пример systemd-сервиса `/etc/systemd/system/anamnes-bot.service`:
+
+```ini
+[Unit]
+Description=Anamnes Telegram patient bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ikorsa
+Group=ikorsa
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/anamnes.env
+ExecStart=/opt/anamnes/.venv/bin/python /opt/anamnes/telegram_bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Запуск:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable anamnes-bot
+sudo systemctl start anamnes-bot
+sudo systemctl status anamnes-bot --no-pager -l
+```
+
 ## Хранение данных
 
 По умолчанию данные сохраняются в папку:
