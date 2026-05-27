@@ -93,6 +93,41 @@ data/uploads/       загруженные файлы пациентов
 
 Папка `data/` исключена из git.
 
+## Резервные копии
+
+В репозитории есть скрипт:
+
+```bash
+scripts/backup_data.sh
+```
+
+Он архивирует `ANAMNES_DATA_DIR` в `ANAMNES_BACKUP_DIR` и удаляет копии старше `ANAMNES_BACKUP_RETENTION_DAYS`.
+
+Пример ручного запуска на сервере:
+
+```bash
+cd /opt/anamnes
+chmod +x scripts/backup_data.sh
+ANAMNES_DATA_DIR=/opt/anamnes/data \
+ANAMNES_BACKUP_DIR=/opt/anamnes/backups \
+ANAMNES_BACKUP_RETENTION_DAYS=14 \
+./scripts/backup_data.sh
+```
+
+Пример ежедневного cron-задания:
+
+```bash
+crontab -e
+```
+
+Добавить строку:
+
+```cron
+15 2 * * * cd /opt/anamnes && ANAMNES_DATA_DIR=/opt/anamnes/data ANAMNES_BACKUP_DIR=/opt/anamnes/backups ANAMNES_BACKUP_RETENTION_DAYS=14 ./scripts/backup_data.sh >> /opt/anamnes/backups/backup.log 2>&1
+```
+
+Папку `/opt/anamnes/backups` желательно периодически копировать за пределы сервера.
+
 ## Разделы приложения
 
 В левом меню есть два раздела:
