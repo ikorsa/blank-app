@@ -46,7 +46,9 @@ MAIN_REASONS = {
     "other": "Другое",
 }
 
+NO_URGENT_SYMPTOMS = "Нет"
 URGENT_SYMPTOMS = [
+    NO_URGENT_SYMPTOMS,
     "Потеря сознания",
     "Сильная одышка",
     "Боль в груди",
@@ -693,6 +695,7 @@ def render_patient_form() -> None:
         URGENT_SYMPTOMS,
         key="urgent_symptoms",
     )
+    selected_urgent_symptoms = [item for item in urgent_symptoms if item != NO_URGENT_SYMPTOMS]
 
     st.subheader("Причина обращения")
     main_reason = selectbox_from_map("Что является основной причиной обращения?", MAIN_REASONS, "main_reason")
@@ -716,7 +719,7 @@ def render_patient_form() -> None:
     )
     submitted = st.button("Отправить анкету врачу", type="primary")
 
-    if urgent_symptoms:
+    if selected_urgent_symptoms:
         st.error(
             "Вы отметили потенциально срочные симптомы. Анкета не предназначена для экстренных ситуаций: "
             "обратитесь за срочной медицинской помощью или вызовите скорую."
@@ -745,7 +748,7 @@ def render_patient_form() -> None:
         "created_at": now_iso(),
         "status": "submitted",
         "main_reason": main_reason,
-        "urgent_symptoms": urgent_symptoms,
+        "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
         "patient": {
             "full_name": full_name.strip(),
             "age": int(age),
