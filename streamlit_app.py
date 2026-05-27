@@ -5,10 +5,17 @@ import smtplib
 import uuid
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 
 APP_TITLE = "Анамнез эндокринолога"
@@ -22,6 +29,7 @@ SMTP_USER = os.getenv("ANAMNES_SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("ANAMNES_SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("ANAMNES_SMTP_FROM", SMTP_USER)
 SMTP_TO = os.getenv("ANAMNES_SMTP_TO", "")
+PDF_FONT_NAME = "DejaVuSans"
 
 MAIN_REASONS = {
     "thyroid": "Щитовидная железа",
@@ -72,6 +80,55 @@ def calculate_bmi(height_cm: int | None, weight_kg: float | None) -> float | Non
     if height_m <= 0:
         return None
     return round(weight_kg / (height_m * height_m), 1)
+
+
+def register_pdf_font() -> str:
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/local/share/fonts/DejaVuSans.ttf",
+    ]
+    for font_path in font_paths:
+        if Path(font_path).exists():
+            if PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, font_path))
+            return PDF_FONT_NAME
+    return "Helvetica"
+
+
+def build_summary_pdf(summary: str, title: str) -> bytes:
+    buffer = BytesIO()
+    font_name = register_pdf_font()
+    styles = getSampleStyleSheet()
+    normal = ParagraphStyle(
+        "AnamnesNormal",
+        parent=styles["Normal"],
+        fontName=font_name,
+        fontSize=10,
+        leading=14,
+        spaceAfter=4,
+    )
+    heading = ParagraphStyle(
+        "AnamnesHeading",
+        parent=styles["Heading1"],
+        fontName=font_name,
+        fontSize=14,
+        leading=18,
+        spaceAfter=8,
+    )
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+    )
+    story = [Paragraph(title, heading), Spacer(1, 4 * mm)]
+    for line in summary.splitlines():
+        text = line if line.strip() else "&nbsp;"
+        story.append(Paragraph(text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), normal))
+    doc.build(story)
+    return buffer.getvalue()
 
 
 def selectbox_from_map(label: str, options: dict[str, str], key: str) -> str:
@@ -699,6 +756,15 @@ def render_doctor_dashboard() -> None:
         data=submission.get("summary", ""),
         file_name=f"summary_{submission['id']}.txt",
         mime="text/plain",
+    )
+    st.download_button(
+        "Скачать резюме PDF",
+        data=build_summary_pdf(
+            submission.get("summary", ""),
+            f"Резюме анамнеза: {patient.get('full_name', 'Пациент')}",
+        ),
+        file_name=f"summary_{submission['id']}.pdf",
+        mime="application/pdf",
     )
 
     st.subheader("Все ответы")
