@@ -584,6 +584,46 @@ def load_submissions() -> list[dict[str, Any]]:
     return sorted(submissions, key=lambda item: item.get("created_at", ""), reverse=True)
 
 
+def update_submission_status(submission_id: str, status: str) -> None:
+    path = SUBMISSIONS_DIR / f"{submission_id}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Анкета {submission_id} не найдена")
+    submission = json.loads(path.read_text(encoding="utf-8"))
+    submission["status"] = status
+    submission["viewed_at"] = now_iso() if status == "viewed" else submission.get("viewed_at")
+    path.write_text(json.dumps(submission, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def filter_submissions(
+    submissions: list[dict[str, Any]],
+    search_query: str,
+    reason_filter: str,
+    status_filter: str,
+) -> list[dict[str, Any]]:
+    query = search_query.strip().lower()
+    filtered = []
+    for item in submissions:
+        patient = item.get("patient", {})
+        reason_label = MAIN_REASONS.get(item.get("main_reason"), item.get("main_reason", ""))
+        haystack = " ".join(
+            [
+                str(patient.get("full_name", "")),
+                str(patient.get("phone", "")),
+                str(patient.get("city", "")),
+                str(reason_label),
+                str(item.get("id", "")),
+            ]
+        ).lower()
+        if query and query not in haystack:
+            continue
+        if reason_filter != "Все" and reason_label != reason_filter:
+            continue
+        if status_filter != "Все" and item.get("status", "submitted") != status_filter:
+            continue
+        filtered.append(item)
+    return filtered
+
+
 def render_patient_form() -> None:
     st.title(APP_TITLE)
     st.caption("Предварительный сбор анамнеза перед консультацией эндокринолога")
@@ -731,23 +771,60 @@ def render_doctor_dashboard() -> None:
         st.info("Пока нет отправленных анкет.")
         return
 
+    viewed_count = sum(1 for item in submissions if item.get("status") == "viewed")
+    new_count = len(submissions) - viewed_count
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    metric_col1.metric("Всего анкет", len(submissions))
+    metric_col2.metric("Новые", new_count)
+    metric_col3.metric("Просмотренные", viewed_count)
+
+    st.subheader("Поиск и фильтры")
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        search_query = st.text_input("Поиск по ФИО, телефону, городу или ID", key="doctor_search")
+    with filter_col2:
+        reason_options = ["Все"] + sorted(
+            {MAIN_REASONS.get(item.get("main_reason"), item.get("main_reason", "")) for item in submissions}
+        )
+        reason_filter = st.selectbox("Причина обращения", reason_options, key="doctor_reason_filter")
+    with filter_col3:
+        status_filter = st.selectbox(
+            "Статус",
+            ["Все", "submitted", "viewed"],
+            format_func=lambda value: {"submitted": "Новая", "viewed": "Просмотрена"}.get(value, value),
+            key="doctor_status_filter",
+        )
+
+    filtered_submissions = filter_submissions(submissions, search_query, reason_filter, status_filter)
+    if not filtered_submissions:
+        st.info("По выбранным фильтрам анкет нет.")
+        return
+
     labels = {
         item["id"]: (
+            f"{'✓' if item.get('status') == 'viewed' else '•'} "
             f"{item['patient'].get('full_name', 'Без имени')} | "
             f"{MAIN_REASONS.get(item.get('main_reason'), item.get('main_reason'))} | "
             f"{item.get('created_at')}"
         )
-        for item in submissions
+        for item in filtered_submissions
     }
     selected_id = st.selectbox("Выберите анкету", list(labels), format_func=lambda item_id: labels[item_id])
-    submission = next(item for item in submissions if item["id"] == selected_id)
+    submission = next(item for item in filtered_submissions if item["id"] == selected_id)
 
     patient = submission["patient"]
     bmi = calculate_bmi(patient.get("height_cm"), patient.get("weight_kg"))
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Возраст", patient.get("age", "—"))
     col2.metric("Вес", patient.get("weight_kg", "—"))
     col3.metric("ИМТ", bmi if bmi is not None else "—")
+    col4.metric("Статус", "Просмотрена" if submission.get("status") == "viewed" else "Новая")
+
+    if submission.get("status") != "viewed":
+        if st.button("Отметить как просмотрено", type="primary"):
+            update_submission_status(submission["id"], "viewed")
+            st.success("Анкета отмечена как просмотренная.")
+            st.rerun()
 
     st.subheader("Резюме для врача")
     st.text(submission.get("summary", "Резюме не сформировано"))
