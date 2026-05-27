@@ -109,6 +109,42 @@ def render_common_questions() -> dict[str, Any]:
     if "Другое" in chronic_conditions:
         chronic_conditions_other = st.text_input("Уточните хронические заболевания", key="common_chronic_other")
 
+    medications = st.multiselect(
+        "Какие лекарства принимаете постоянно?",
+        [
+            "Не принимаю постоянно",
+            "Препараты от давления",
+            "Препараты от сахара",
+            "Инсулин",
+            "L-тироксин / Эутирокс",
+            "Тирозол / пропицил",
+            "Статины / препараты холестерина",
+            "Антикоагулянты / антиагреганты",
+            "Мочегонные",
+            "Гормональные препараты / контрацептивы",
+            "Антидепрессанты / противотревожные",
+            "Глюкокортикоиды",
+            "Витамин D / кальций",
+            "БАДы",
+            "Не помню",
+            "Другое",
+        ],
+        key="common_medications_select",
+    )
+    medications_details = st.text_area(
+        "Уточните названия, дозировки и режим приема лекарств",
+        key="common_medications_details",
+    )
+
+    allergy_status = st.selectbox(
+        "Есть ли аллергии на лекарства?",
+        ["Нет", "Да", "Не знаю"],
+        key="common_allergy_status",
+    )
+    allergies_details = ""
+    if allergy_status == "Да":
+        allergies_details = st.text_area("На какие лекарства и какая реакция?", key="common_allergies_details")
+
     return {
         "complaints": st.text_area("Какие жалобы беспокоят сейчас?", key="common_complaints"),
         "complaints_started": st.selectbox(
@@ -125,8 +161,10 @@ def render_common_questions() -> dict[str, Any]:
         "chronic_conditions": chronic_conditions,
         "chronic_conditions_other": chronic_conditions_other,
         "surgeries": st.text_area("Были ли операции?", key="common_surgeries"),
-        "medications": st.text_area("Какие лекарства принимаете постоянно?", key="common_medications"),
-        "allergies": st.text_area("Есть ли аллергии на лекарства?", key="common_allergies"),
+        "medications": medications,
+        "medications_details": medications_details,
+        "allergy_status": allergy_status,
+        "allergies_details": allergies_details,
         "family_history": st.multiselect(
             "Есть ли у родственников эндокринные заболевания?",
             ["Диабет", "Болезни щитовидной железы", "Ожирение", "Остеопороз", "Не знаю", "Нет"],
@@ -359,6 +397,7 @@ def build_summary(submission: dict[str, Any]) -> str:
         f"Город: {format_answer(patient.get('city'))}",
         f"Рост/вес: {format_answer(patient.get('height_cm'))} см / {format_answer(patient.get('weight_kg'))} кг",
         f"ИМТ: {bmi if bmi is not None else 'не рассчитан'}",
+        f"Беременность/лактация: {format_answer(patient.get('reproductive_status'))}",
         "",
         f"Причина обращения: {MAIN_REASONS.get(submission['main_reason'], submission['main_reason'])}",
         f"Срочные симптомы: {format_answer(submission.get('urgent_symptoms'))}",
@@ -370,7 +409,9 @@ def build_summary(submission: dict[str, Any]) -> str:
         f"- Уточнение по хроническим заболеваниям: {format_answer(common.get('chronic_conditions_other'))}",
         f"- Операции: {format_answer(common.get('surgeries'))}",
         f"- Постоянные лекарства: {format_answer(common.get('medications'))}",
-        f"- Аллергии: {format_answer(common.get('allergies'))}",
+        f"- Уточнение по лекарствам: {format_answer(common.get('medications_details'))}",
+        f"- Аллергии на лекарства: {format_answer(common.get('allergy_status'))}",
+        f"- Уточнение по аллергиям: {format_answer(common.get('allergies_details'))}",
         f"- Семейный анамнез: {format_answer(common.get('family_history'))}",
         f"- Обычное АД: {format_answer(common.get('blood_pressure'))}",
         f"- Курение: {format_answer(common.get('smoking'))}",
@@ -515,6 +556,13 @@ def render_patient_form() -> None:
             city = st.text_input("Город", key="patient_city")
             height_cm = st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
             weight_kg = st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
+        reproductive_status = "Не применимо"
+        if sex == "Женский":
+            reproductive_status = st.selectbox(
+                "Беременность / лактация",
+                ["Нет", "Беременность", "Лактация", "Планирую беременность", "Менопауза", "Не знаю"],
+                key="patient_reproductive_status",
+            )
 
         st.subheader("Срочные симптомы")
         urgent_symptoms = st.multiselect(
@@ -578,6 +626,7 @@ def render_patient_form() -> None:
             "city": city.strip(),
             "height_cm": int(height_cm) if height_cm else None,
             "weight_kg": float(weight_kg) if weight_kg else None,
+            "reproductive_status": reproductive_status,
         },
         "common": common,
         "branch": branch,
