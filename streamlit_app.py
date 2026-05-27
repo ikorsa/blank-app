@@ -80,6 +80,22 @@ def format_answer(value: Any) -> str:
     return str(value)
 
 
+def get_submission_reason_values(submission: dict[str, Any]) -> list[str]:
+    reasons = submission.get("main_reasons")
+    if isinstance(reasons, list) and reasons:
+        return reasons
+    reason = submission.get("main_reason")
+    return [reason] if reason else []
+
+
+def get_submission_reason_labels(submission: dict[str, Any]) -> list[str]:
+    return [MAIN_REASONS.get(reason, reason) for reason in get_submission_reason_values(submission)]
+
+
+def format_submission_reasons(submission: dict[str, Any]) -> str:
+    return ", ".join(get_submission_reason_labels(submission)) or "не указано"
+
+
 def calculate_bmi(height_cm: int | None, weight_kg: float | None) -> float | None:
     if not height_cm or not weight_kg:
         return None
@@ -447,6 +463,15 @@ def render_branch(reason: str, sex: str) -> dict[str, Any]:
     return render_other_branch()
 
 
+def render_branches(reasons: list[str], sex: str) -> dict[str, Any]:
+    branches = {}
+    for reason in reasons:
+        with st.container(border=True):
+            st.markdown(f"### {MAIN_REASONS.get(reason, reason)}")
+            branches[reason] = render_branch(reason, sex)
+    return branches
+
+
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
     common = submission["common"]
@@ -463,7 +488,7 @@ def build_summary(submission: dict[str, Any]) -> str:
         f"ИМТ: {bmi if bmi is not None else 'не рассчитан'}",
         f"Беременность/лактация: {format_answer(patient.get('reproductive_status'))}",
         "",
-        f"Причина обращения: {MAIN_REASONS.get(submission['main_reason'], submission['main_reason'])}",
+        f"Причина обращения: {format_submission_reasons(submission)}",
         f"Срочные симптомы: {format_answer(submission.get('urgent_symptoms'))}",
         f"Жалобы: {format_answer(common.get('complaints'))}",
         f"Когда появились: {format_answer(common.get('complaints_started'))}",
@@ -483,9 +508,19 @@ def build_summary(submission: dict[str, Any]) -> str:
         "Специализированная ветка:",
     ]
 
-    for key, value in branch.items():
-        readable_key = key.replace("_", " ")
-        lines.append(f"- {readable_key}: {format_answer(value)}")
+    if any(reason in MAIN_REASONS for reason in branch):
+        for reason, answers in branch.items():
+            lines.append(f"- {MAIN_REASONS.get(reason, reason)}:")
+            if isinstance(answers, dict):
+                for key, value in answers.items():
+                    readable_key = key.replace("_", " ")
+                    lines.append(f"  - {readable_key}: {format_answer(value)}")
+            else:
+                lines.append(f"  - {format_answer(answers)}")
+    else:
+        for key, value in branch.items():
+            readable_key = key.replace("_", " ")
+            lines.append(f"- {readable_key}: {format_answer(value)}")
 
     lines.extend(
         [
@@ -546,7 +581,7 @@ def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
         return False, "Email не настроен: задайте SMTP-переменные окружения."
 
     patient = submission["patient"]
-    reason = MAIN_REASONS.get(submission["main_reason"], submission["main_reason"])
+    reason = format_submission_reasons(submission)
     subject = f"Новая анкета эндокринолога: {patient.get('full_name', 'без имени')}"
     body = (
         "Получена новая анкета пациента.\n\n"
@@ -589,7 +624,7 @@ def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
         return False, "Telegram-уведомление не настроено."
 
     patient = submission["patient"]
-    reason = MAIN_REASONS.get(submission["main_reason"], submission["main_reason"])
+    reason = format_submission_reasons(submission)
     text = "\n".join(
         [
             "Новая анкета эндокринолога",
@@ -639,7 +674,8 @@ def filter_submissions(
     filtered = []
     for item in submissions:
         patient = item.get("patient", {})
-        reason_label = MAIN_REASONS.get(item.get("main_reason"), item.get("main_reason", ""))
+        reason_labels = get_submission_reason_labels(item)
+        reason_label = ", ".join(reason_labels)
         haystack = " ".join(
             [
                 str(patient.get("full_name", "")),
@@ -651,7 +687,7 @@ def filter_submissions(
         ).lower()
         if query and query not in haystack:
             continue
-        if reason_filter != "Все" and reason_label != reason_filter:
+        if reason_filter != "Все" and reason_filter not in reason_labels:
             continue
         if status_filter != "Все" and item.get("status", "submitted") != status_filter:
             continue
@@ -698,10 +734,15 @@ def render_patient_form() -> None:
     selected_urgent_symptoms = [item for item in urgent_symptoms if item != NO_URGENT_SYMPTOMS]
 
     st.subheader("Причина обращения")
-    main_reason = selectbox_from_map("Что является основной причиной обращения?", MAIN_REASONS, "main_reason")
+    selected_reasons = st.multiselect(
+        "Что является причиной обращения? Можно выбрать несколько вариантов.",
+        list(MAIN_REASONS.keys()),
+        format_func=lambda reason: MAIN_REASONS[reason],
+        key="main_reasons",
+    )
 
     common = render_common_questions()
-    branch = render_branch(main_reason, sex)
+    branch = render_branches(selected_reasons, sex) if selected_reasons else {}
 
     st.subheader("Файлы и комментарий")
     uploaded_files = st.file_uploader(
@@ -737,6 +778,8 @@ def render_patient_form() -> None:
         errors.append("Укажите телефон для связи.")
     if age <= 0:
         errors.append("Укажите возраст.")
+    if not selected_reasons:
+        errors.append("Выберите хотя бы одну причину обращения.")
 
     if errors:
         for error in errors:
@@ -747,7 +790,8 @@ def render_patient_form() -> None:
         "id": str(uuid.uuid4()),
         "created_at": now_iso(),
         "status": "submitted",
-        "main_reason": main_reason,
+        "main_reason": selected_reasons[0],
+        "main_reasons": selected_reasons,
         "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
         "patient": {
             "full_name": full_name.strip(),
@@ -824,7 +868,7 @@ def render_doctor_dashboard() -> None:
         search_query = st.text_input("Поиск по ФИО, телефону, городу или ID", key="doctor_search")
     with filter_col2:
         reason_options = ["Все"] + sorted(
-            {MAIN_REASONS.get(item.get("main_reason"), item.get("main_reason", "")) for item in submissions}
+            {reason for item in submissions for reason in get_submission_reason_labels(item)}
         )
         reason_filter = st.selectbox("Причина обращения", reason_options, key="doctor_reason_filter")
     with filter_col3:
@@ -844,7 +888,7 @@ def render_doctor_dashboard() -> None:
         item["id"]: (
             f"{'✓' if item.get('status') == 'viewed' else '•'} "
             f"{item['patient'].get('full_name', 'Без имени')} | "
-            f"{MAIN_REASONS.get(item.get('main_reason'), item.get('main_reason'))} | "
+            f"{format_submission_reasons(item)} | "
             f"{item.get('created_at')}"
         )
         for item in filtered_submissions
@@ -889,7 +933,7 @@ def render_doctor_dashboard() -> None:
         {
             "patient": submission.get("patient"),
             "urgent_symptoms": submission.get("urgent_symptoms"),
-            "main_reason": MAIN_REASONS.get(submission.get("main_reason"), submission.get("main_reason")),
+            "main_reasons": get_submission_reason_labels(submission),
             "common": submission.get("common"),
             "branch": submission.get("branch"),
             "additional_comment": submission.get("additional_comment"),
