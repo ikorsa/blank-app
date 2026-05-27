@@ -668,12 +668,6 @@ def render_patient_form() -> None:
             "При острых симптомах обратитесь за срочной медицинской помощью."
         )
 
-    st.subheader("Согласие")
-    consent = st.checkbox(
-        "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
-        key="consent",
-    )
-
     st.subheader("Базовые данные")
     col1, col2 = st.columns(2)
     with col1:
@@ -715,6 +709,11 @@ def render_patient_form() -> None:
     )
     additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
 
+    st.subheader("Согласие и отправка")
+    consent = st.checkbox(
+        "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
+        key="consent",
+    )
     submitted = st.button("Отправить анкету врачу", type="primary")
 
     if urgent_symptoms:
