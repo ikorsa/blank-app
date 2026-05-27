@@ -308,6 +308,29 @@ def render_thyroid_branch() -> dict[str, Any]:
 def render_diabetes_branch() -> dict[str, Any]:
     st.subheader("Ветка: сахарный диабет / высокий сахар")
     insulin = st.selectbox("Используете ли инсулин?", ["Нет", "Да"], key="diabetes_insulin")
+    glucose_medications = st.multiselect(
+        "Какие препараты принимаете от сахара?",
+        [
+            "Не принимаю",
+            "Метформин",
+            "Сульфонилмочевина: гликлазид / Диабетон / глимепирид / Амарил",
+            "Ингибиторы ДПП-4: ситаглиптин / вилдаглиптин / линаглиптин",
+            "Ингибиторы SGLT2: дапаглифлозин / эмпаглифлозин / канаглифлозин",
+            "Агонисты ГПП-1: семаглутид / лираглутид / дулаглутид",
+            "Тиазолидиндионы: пиоглитазон",
+            "Акарбоза",
+            "Инсулин короткого действия",
+            "Инсулин длительного действия",
+            "Комбинированный инсулин",
+            "Не помню",
+            "Другое",
+        ],
+        key="diabetes_medications",
+    )
+    glucose_medications_details = st.text_area(
+        "Уточните названия, дозировки и режим приема препаратов от сахара",
+        key="diabetes_medications_details",
+    )
     data = {
         "diagnosis": st.selectbox(
             "Есть ли диагноз сахарного диабета?",
@@ -322,7 +345,8 @@ def render_diabetes_branch() -> dict[str, Any]:
             key="diabetes_diagnosis",
         ),
         "first_detected": st.text_input("Когда впервые выявили повышение сахара/диабет?", key="diabetes_first_detected"),
-        "medications": st.text_area("Какие препараты принимаете от сахара?", key="diabetes_medications"),
+        "medications": glucose_medications,
+        "medications_details": glucose_medications_details,
         "insulin": insulin,
         "fasting_glucose": st.text_input("Какой сахар обычно натощак?", key="diabetes_fasting_glucose"),
         "post_meal_glucose": st.text_input("Какой сахар обычно после еды?", key="diabetes_post_meal_glucose"),
