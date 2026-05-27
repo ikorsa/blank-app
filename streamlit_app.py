@@ -82,10 +82,7 @@ def format_answer(value: Any) -> str:
 
 def get_submission_reason_values(submission: dict[str, Any]) -> list[str]:
     reasons = submission.get("main_reasons")
-    if isinstance(reasons, list) and reasons:
-        return reasons
-    reason = submission.get("main_reason")
-    return [reason] if reason else []
+    return reasons if isinstance(reasons, list) else []
 
 
 def get_submission_reason_labels(submission: dict[str, Any]) -> list[str]:
@@ -790,7 +787,6 @@ def render_patient_form() -> None:
         "id": str(uuid.uuid4()),
         "created_at": now_iso(),
         "status": "submitted",
-        "main_reason": selected_reasons[0],
         "main_reasons": selected_reasons,
         "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
         "patient": {
