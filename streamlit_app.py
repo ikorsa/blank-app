@@ -57,6 +57,13 @@ URGENT_SYMPTOMS = [
     "Спутанность сознания",
 ]
 
+SUBMISSION_STATUSES = {
+    "submitted": "Новая",
+    "in_progress": "В работе",
+    "viewed": "Просмотрена",
+    "closed": "Закрыта",
+}
+
 
 def init_storage() -> None:
     SUBMISSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -91,6 +98,55 @@ def get_submission_reason_labels(submission: dict[str, Any]) -> list[str]:
 
 def format_submission_reasons(submission: dict[str, Any]) -> str:
     return ", ".join(get_submission_reason_labels(submission)) or "не указано"
+
+
+def get_red_flags(submission: dict[str, Any]) -> list[str]:
+    return [item for item in submission.get("urgent_symptoms", []) if item != NO_URGENT_SYMPTOMS]
+
+
+def format_branch_key(key: str) -> str:
+    labels = {
+        "diagnosis": "Диагноз",
+        "medications": "Препараты",
+        "medications_details": "Уточнение по препаратам",
+        "insulin": "Инсулин",
+        "insulin_types": "Типы инсулина",
+        "insulin_regimen": "Режим инсулинотерапии",
+        "insulin_daily_units": "Дозы/схема инсулина",
+        "first_detected": "Когда выявлено",
+        "fasting_glucose": "Сахар натощак",
+        "post_meal_glucose": "Сахар после еды",
+        "hba1c": "HbA1c",
+        "hypoglycemia": "Гипогликемии",
+        "complications": "Осложнения/жалобы",
+        "dose": "Доза/длительность приема",
+        "last_lab_date": "Дата последних анализов",
+        "last_tsh_date": "Дата последнего ТТГ",
+        "last_tsh_value": "ТТГ",
+        "free_t4_value": "Т4 свободный",
+        "free_t3_value": "Т3 свободный",
+        "antibodies": "Антитела",
+        "ultrasound": "УЗИ",
+        "ultrasound_findings": "Находки УЗИ",
+        "symptoms": "Симптомы",
+        "waist_cm": "Окружность талии",
+        "weight_gain_started": "Когда начался набор веса",
+        "weight_gain_amount": "Набор веса за период",
+        "max_weight": "Максимальный вес",
+        "appetite": "Аппетит",
+        "previous_attempts": "Попытки снижения веса",
+        "weight_loss_result": "Результат снижения веса",
+        "night_eating": "Ночные перекусы",
+        "snoring": "Храп/апноэ",
+        "sleep_duration": "Сон",
+        "physical_activity": "Физическая активность",
+        "hypertension": "Повышенное давление",
+        "weight_gain_medications": "Лекарства, связанные с набором веса",
+        "metabolic_tests": "Сахар/инсулин/HbA1c",
+        "details": "Описание",
+        "expectations": "Ожидания от консультации",
+    }
+    return labels.get(key, key.replace("_", " "))
 
 
 def calculate_bmi(height_cm: int | None, weight_kg: float | None) -> float | None:
@@ -270,20 +326,43 @@ def render_thyroid_branch() -> dict[str, Any]:
         ),
         "medications": st.multiselect(
             "Принимаете ли препараты для щитовидной железы?",
-            ["L-тироксин / Эутирокс", "Тирозол / пропицил", "Йод", "Нет", "Другое"],
+            [
+                "Не принимаю",
+                "Эутирокс",
+                "L-тироксин",
+                "Тирозол",
+                "Пропицил",
+                "Йод",
+                "Селен",
+                "Не помню",
+                "Другое",
+            ],
             key="thyroid_medications",
         ),
         "dose": st.text_input("Укажите дозировку и как давно принимаете", key="thyroid_dose"),
+        "last_lab_date": st.text_input("Дата последних анализов щитовидной железы", key="thyroid_last_lab_date"),
         "last_tsh_date": st.selectbox(
             "Когда последний раз сдавали ТТГ?",
             ["Менее 1 месяца назад", "1-3 месяца назад", "3-6 месяцев назад", "Более 6 месяцев назад", "Не сдавал/не помню"],
             key="thyroid_last_tsh_date",
         ),
         "last_tsh_value": st.text_input("Укажите результат ТТГ, если помните", key="thyroid_last_tsh_value"),
+        "free_t4_value": st.text_input("Т4 свободный, если помните", key="thyroid_free_t4"),
+        "free_t3_value": st.text_input("Т3 свободный, если помните", key="thyroid_free_t3"),
+        "antibodies": st.multiselect(
+            "Сдавали ли антитела?",
+            ["АТ-ТПО", "АТ-ТГ", "Антитела к рецептору ТТГ", "Не сдавал/не помню"],
+            key="thyroid_antibodies",
+        ),
         "ultrasound": st.selectbox(
             "Есть ли УЗИ щитовидной железы?",
             ["Да, могу загрузить", "Да, но нет с собой", "Нет"],
             key="thyroid_ultrasound",
+        ),
+        "ultrasound_findings": st.multiselect(
+            "Что было на УЗИ, если известно?",
+            ["Узлы", "Кисты", "Увеличение железы", "Уменьшение железы", "Признаки тиреоидита", "Не знаю"],
+            key="thyroid_ultrasound_findings",
         ),
         "symptoms": st.multiselect(
             "Какие симптомы есть?",
@@ -408,12 +487,15 @@ def render_diabetes_branch() -> dict[str, Any]:
 def render_weight_branch() -> dict[str, Any]:
     st.subheader("Ветка: лишний вес / ожирение")
     return {
+        "waist_cm": st.text_input("Окружность талии, см, если знаете", key="weight_waist_cm"),
         "weight_gain_started": st.selectbox(
             "Когда начался набор веса?",
             ["С детства", "После 18 лет", "После беременности", "После стресса", "После начала лекарств", "В последние месяцы", "Не знаю"],
             key="weight_gain_started",
         ),
+        "weight_gain_amount": st.text_input("Сколько кг набрали и за какой период?", key="weight_gain_amount"),
         "max_weight": st.text_input("Максимальный вес в жизни?", key="weight_max_weight"),
+        "appetite": st.selectbox("Как изменился аппетит?", ["Не изменился", "Повышен", "Снижен", "Приступы сильного голода", "Не знаю"], key="weight_appetite"),
         "previous_attempts": st.multiselect(
             "Были ли попытки снижения веса?",
             ["Диета", "Спорт", "Лекарства", "Операция", "Нет"],
@@ -426,7 +508,18 @@ def render_weight_branch() -> dict[str, Any]:
         ),
         "night_eating": st.selectbox("Есть ли ночные перекусы или переедание вечером?", ["Нет", "Да", "Иногда"], key="weight_night_eating"),
         "snoring": st.selectbox("Есть ли храп или остановки дыхания во сне?", ["Нет", "Да", "Не знаю"], key="weight_snoring"),
+        "sleep_duration": st.selectbox("Сколько обычно спите?", ["Менее 5 часов", "5-6 часов", "7-8 часов", "Более 8 часов", "Не знаю"], key="weight_sleep_duration"),
+        "physical_activity": st.selectbox(
+            "Физическая активность",
+            ["Низкая", "Хожу пешком регулярно", "Тренировки 1-2 раза в неделю", "Тренировки 3+ раза в неделю", "Ограничена из-за здоровья"],
+            key="weight_physical_activity",
+        ),
         "hypertension": st.selectbox("Есть ли повышенное давление?", ["Нет", "Да", "Не знаю"], key="weight_hypertension"),
+        "weight_gain_medications": st.multiselect(
+            "Были ли лекарства, после которых мог начаться набор веса?",
+            ["Гормоны/глюкокортикоиды", "Антидепрессанты", "Нейролептики", "Инсулин", "Препараты от эпилепсии", "Не было", "Не знаю", "Другое"],
+            key="weight_gain_medications",
+        ),
         "metabolic_tests": st.selectbox(
             "Сдавали ли сахар, инсулин, HbA1c?",
             ["Да, могу указать/загрузить", "Нет", "Не помню"],
@@ -530,61 +623,91 @@ def build_summary(submission: dict[str, Any]) -> str:
     branch = submission["branch"]
     files = submission["files"]
     bmi = calculate_bmi(patient.get("height_cm"), patient.get("weight_kg"))
+    red_flags = get_red_flags(submission)
+    patient_intro = (
+        f"{format_answer(patient.get('sex')).lower()}, {format_answer(patient.get('age'))} лет, "
+        f"ИМТ {bmi if bmi is not None else 'не рассчитан'}"
+    )
 
     lines = [
-        f"Пациент: {format_answer(patient.get('full_name'))}, {format_answer(patient.get('age'))} лет",
-        f"Пол: {format_answer(patient.get('sex'))}",
-        f"Телефон: {format_answer(patient.get('phone'))}",
-        f"Город: {format_answer(patient.get('city'))}",
-        f"Рост/вес: {format_answer(patient.get('height_cm'))} см / {format_answer(patient.get('weight_kg'))} кг",
-        f"ИМТ: {bmi if bmi is not None else 'не рассчитан'}",
-        f"Беременность/лактация: {format_answer(patient.get('reproductive_status'))}",
+        "КРАТКО",
+        f"{format_answer(patient.get('full_name'))}: {patient_intro}.",
+        f"Причина обращения: {format_submission_reasons(submission)}.",
+        f"Ключевые жалобы: {format_answer(common.get('complaints'))}.",
         "",
-        f"Причина обращения: {format_submission_reasons(submission)}",
-        f"Срочные симптомы: {format_answer(submission.get('urgent_symptoms'))}",
-        f"Жалобы: {format_answer(common.get('complaints'))}",
-        f"Когда появились: {format_answer(common.get('complaints_started'))}",
-        "",
-        "Общий анамнез:",
-        f"- Хронические заболевания: {format_answer(common.get('chronic_conditions'))}",
-        f"- Уточнение по хроническим заболеваниям: {format_answer(common.get('chronic_conditions_other'))}",
-        f"- Операции: {format_answer(common.get('surgeries'))}",
-        f"- Постоянные лекарства: {format_answer(common.get('medications'))}",
-        f"- Уточнение по лекарствам: {format_answer(common.get('medications_details'))}",
-        f"- Аллергии на лекарства: {format_answer(common.get('allergy_status'))}",
-        f"- Уточнение по аллергиям: {format_answer(common.get('allergies_details'))}",
-        f"- Семейный анамнез: {format_answer(common.get('family_history'))}",
-        f"- Обычное АД: {format_answer(common.get('blood_pressure'))}",
-        f"- Курение: {format_answer(common.get('smoking'))}",
-        "",
-        "Специализированная ветка:",
+        "КРАСНЫЕ ФЛАГИ",
     ]
-
-    if any(reason in MAIN_REASONS for reason in branch):
-        for reason, answers in branch.items():
-            lines.append(f"- {MAIN_REASONS.get(reason, reason)}:")
-            if isinstance(answers, dict):
-                for key, value in answers.items():
-                    readable_key = key.replace("_", " ")
-                    lines.append(f"  - {readable_key}: {format_answer(value)}")
-            else:
-                lines.append(f"  - {format_answer(answers)}")
+    if red_flags:
+        lines.append("ВНИМАНИЕ: пациент отметил потенциально срочные симптомы:")
+        lines.extend([f"- {item}" for item in red_flags])
     else:
-        for key, value in branch.items():
-            readable_key = key.replace("_", " ")
-            lines.append(f"- {readable_key}: {format_answer(value)}")
+        lines.append("Не отмечены.")
 
     lines.extend(
         [
             "",
-            f"Комментарий пациента: {format_answer(submission.get('additional_comment'))}",
-            f"Загруженные файлы: {len(files)}",
+            "ПАЦИЕНТ",
+            f"- Телефон: {format_answer(patient.get('phone'))}",
+            f"- Город: {format_answer(patient.get('city'))}",
+            f"- Пол: {format_answer(patient.get('sex'))}",
+            f"- Возраст: {format_answer(patient.get('age'))}",
+            f"- Рост/вес: {format_answer(patient.get('height_cm'))} см / {format_answer(patient.get('weight_kg'))} кг",
+            f"- ИМТ: {bmi if bmi is not None else 'не рассчитан'}",
+            f"- Беременность/лактация: {format_answer(patient.get('reproductive_status'))}",
+            "",
+            "ОБЩИЙ АНАМНЕЗ",
+            f"- Когда появились жалобы: {format_answer(common.get('complaints_started'))}",
+            f"- Хронические заболевания: {format_answer(common.get('chronic_conditions'))}",
+            f"- Уточнение по хроническим заболеваниям: {format_answer(common.get('chronic_conditions_other'))}",
+            f"- Операции: {format_answer(common.get('surgeries'))}",
+            f"- Постоянные лекарства: {format_answer(common.get('medications'))}",
+            f"- Уточнение по лекарствам: {format_answer(common.get('medications_details'))}",
+            f"- Аллергии на лекарства: {format_answer(common.get('allergy_status'))}",
+            f"- Уточнение по аллергиям: {format_answer(common.get('allergies_details'))}",
+            f"- Семейный анамнез: {format_answer(common.get('family_history'))}",
+            f"- Обычное АД: {format_answer(common.get('blood_pressure'))}",
+            f"- Курение: {format_answer(common.get('smoking'))}",
+            "",
+            "ПРОФИЛЬНЫЕ БЛОКИ",
+        ]
+    )
+
+    if any(reason in MAIN_REASONS for reason in branch):
+        for reason, answers in branch.items():
+            lines.append(f"{MAIN_REASONS.get(reason, reason)}:")
+            if isinstance(answers, dict):
+                for key, value in answers.items():
+                    lines.append(f"- {format_branch_key(key)}: {format_answer(value)}")
+            else:
+                lines.append(f"- {format_answer(answers)}")
+            lines.append("")
+    else:
+        for key, value in branch.items():
+            lines.append(f"- {format_branch_key(key)}: {format_answer(value)}")
+
+    lines.extend(
+        [
+            "ФАЙЛЫ И КОММЕНТАРИИ",
+            f"- Комментарий пациента: {format_answer(submission.get('additional_comment'))}",
+            f"- Загруженные файлы: {len(files)}",
         ]
     )
     for item in files:
-        lines.append(f"- {item['original_name']} ({item['size']} байт)")
-    return "\n".join(lines)
+        lines.append(f"  - {item['original_name']} ({item['size']} байт)")
 
+    doctor = submission.get("doctor", {})
+    if doctor:
+        lines.extend(
+            [
+                "",
+                "СЛУЖЕБНЫЕ ЗАМЕТКИ ВРАЧА",
+                f"- Статус: {SUBMISSION_STATUSES.get(submission.get('status'), format_answer(submission.get('status')))}",
+                f"- Дата приема: {format_answer(doctor.get('appointment_date'))}",
+                f"- Что попросить донести: {format_answer(doctor.get('requested_documents'))}",
+                f"- Комментарий врача: {format_answer(doctor.get('note'))}",
+            ]
+        )
+    return "\n".join(lines)
 
 def save_submission(submission: dict[str, Any], uploaded_files: list[Any]) -> str:
     init_storage()
@@ -622,6 +745,14 @@ def save_submission(submission: dict[str, Any], uploaded_files: list[Any]) -> st
         encoding="utf-8",
     )
     return submission_id
+
+
+def write_submission_record(submission: dict[str, Any]) -> None:
+    submission["summary"] = build_summary(submission)
+    (SUBMISSIONS_DIR / f"{submission['id']}.json").write_text(
+        json.dumps(submission, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def email_notifications_configured() -> bool:
@@ -712,8 +843,32 @@ def update_submission_status(submission_id: str, status: str) -> None:
         raise FileNotFoundError(f"Анкета {submission_id} не найдена")
     submission = json.loads(path.read_text(encoding="utf-8"))
     submission["status"] = status
-    submission["viewed_at"] = now_iso() if status == "viewed" else submission.get("viewed_at")
-    path.write_text(json.dumps(submission, ensure_ascii=False, indent=2), encoding="utf-8")
+    if status in {"viewed", "in_progress", "closed"}:
+        submission["viewed_at"] = submission.get("viewed_at") or now_iso()
+    write_submission_record(submission)
+
+
+def update_doctor_fields(
+    submission_id: str,
+    status: str,
+    note: str,
+    requested_documents: str,
+    appointment_date: str,
+) -> None:
+    path = SUBMISSIONS_DIR / f"{submission_id}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Анкета {submission_id} не найдена")
+    submission = json.loads(path.read_text(encoding="utf-8"))
+    submission["status"] = status
+    if status in {"viewed", "in_progress", "closed"}:
+        submission["viewed_at"] = submission.get("viewed_at") or now_iso()
+    submission["doctor"] = {
+        "note": note.strip(),
+        "requested_documents": requested_documents.strip(),
+        "appointment_date": appointment_date.strip(),
+        "updated_at": now_iso(),
+    }
+    write_submission_record(submission)
 
 
 def filter_submissions(
@@ -805,6 +960,40 @@ def render_patient_form() -> None:
     )
     additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
 
+    preview_submission = {
+        "id": "preview",
+        "created_at": now_iso(),
+        "status": "submitted",
+        "main_reasons": selected_reasons,
+        "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
+        "patient": {
+            "full_name": full_name.strip(),
+            "age": int(age),
+            "sex": sex,
+            "phone": phone.strip(),
+            "city": city.strip(),
+            "height_cm": int(height_cm) if height_cm else None,
+            "weight_kg": float(weight_kg) if weight_kg else None,
+            "reproductive_status": reproductive_status,
+        },
+        "common": common,
+        "branch": branch,
+        "additional_comment": additional_comment,
+        "files": [
+            {
+                "original_name": uploaded_file.name,
+                "stored_name": uploaded_file.name,
+                "path": "",
+                "type": uploaded_file.type,
+                "size": uploaded_file.size,
+            }
+            for uploaded_file in (uploaded_files or [])
+        ],
+    }
+
+    with st.expander("Предпросмотр резюме перед отправкой", expanded=False):
+        st.text(build_summary(preview_submission))
+
     st.subheader("Согласие и отправка")
     consent = st.checkbox(
         "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
@@ -838,27 +1027,7 @@ def render_patient_form() -> None:
             st.error(error)
         return
 
-    submission = {
-        "id": str(uuid.uuid4()),
-        "created_at": now_iso(),
-        "status": "submitted",
-        "main_reasons": selected_reasons,
-        "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
-        "patient": {
-            "full_name": full_name.strip(),
-            "age": int(age),
-            "sex": sex,
-            "phone": phone.strip(),
-            "city": city.strip(),
-            "height_cm": int(height_cm) if height_cm else None,
-            "weight_kg": float(weight_kg) if weight_kg else None,
-            "reproductive_status": reproductive_status,
-        },
-        "common": common,
-        "branch": branch,
-        "additional_comment": additional_comment,
-        "files": [],
-    }
+    submission = {**preview_submission, "id": str(uuid.uuid4()), "created_at": now_iso(), "files": []}
     submission_id = save_submission(submission, uploaded_files or [])
     st.success("Анкета отправлена врачу.")
     st.info(f"Номер анкеты: {submission_id}")
@@ -907,11 +1076,13 @@ def render_doctor_dashboard() -> None:
         return
 
     viewed_count = sum(1 for item in submissions if item.get("status") == "viewed")
-    new_count = len(submissions) - viewed_count
-    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    new_count = sum(1 for item in submissions if item.get("status", "submitted") == "submitted")
+    red_flag_count = sum(1 for item in submissions if get_red_flags(item))
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     metric_col1.metric("Всего анкет", len(submissions))
     metric_col2.metric("Новые", new_count)
     metric_col3.metric("Просмотренные", viewed_count)
+    metric_col4.metric("С красными флагами", red_flag_count)
 
     st.subheader("Поиск и фильтры")
     filter_col1, filter_col2, filter_col3 = st.columns(3)
@@ -925,8 +1096,8 @@ def render_doctor_dashboard() -> None:
     with filter_col3:
         status_filter = st.selectbox(
             "Статус",
-            ["Все", "submitted", "viewed"],
-            format_func=lambda value: {"submitted": "Новая", "viewed": "Просмотрена"}.get(value, value),
+            ["Все", *SUBMISSION_STATUSES.keys()],
+            format_func=lambda value: SUBMISSION_STATUSES.get(value, value),
             key="doctor_status_filter",
         )
 
@@ -937,9 +1108,10 @@ def render_doctor_dashboard() -> None:
 
     labels = {
         item["id"]: (
-            f"{'✓' if item.get('status') == 'viewed' else '•'} "
+            f"{'!' if get_red_flags(item) else ('✓' if item.get('status') == 'viewed' else '•')} "
             f"{item['patient'].get('full_name', 'Без имени')} | "
             f"{format_submission_reasons(item)} | "
+            f"{SUBMISSION_STATUSES.get(item.get('status', 'submitted'), item.get('status'))} | "
             f"{item.get('created_at')}"
         )
         for item in filtered_submissions
@@ -953,13 +1125,46 @@ def render_doctor_dashboard() -> None:
     col1.metric("Возраст", patient.get("age", "—"))
     col2.metric("Вес", patient.get("weight_kg", "—"))
     col3.metric("ИМТ", bmi if bmi is not None else "—")
-    col4.metric("Статус", "Просмотрена" if submission.get("status") == "viewed" else "Новая")
+    col4.metric("Статус", SUBMISSION_STATUSES.get(submission.get("status", "submitted"), submission.get("status")))
+
+    red_flags = get_red_flags(submission)
+    if red_flags:
+        st.error("ВНИМАНИЕ: отмечены срочные симптомы: " + ", ".join(red_flags))
 
     if submission.get("status") != "viewed":
         if st.button("Отметить как просмотрено", type="primary"):
             update_submission_status(submission["id"], "viewed")
             st.success("Анкета отмечена как просмотренная.")
             st.rerun()
+
+    st.subheader("Служебные поля врача")
+    doctor = submission.get("doctor", {})
+    with st.form(f"doctor_fields_{submission['id']}"):
+        doctor_status = st.selectbox(
+            "Статус анкеты",
+            list(SUBMISSION_STATUSES.keys()),
+            index=list(SUBMISSION_STATUSES.keys()).index(submission.get("status", "submitted"))
+            if submission.get("status", "submitted") in SUBMISSION_STATUSES
+            else 0,
+            format_func=lambda value: SUBMISSION_STATUSES[value],
+        )
+        appointment_date = st.text_input("Дата приема", value=doctor.get("appointment_date", ""))
+        requested_documents = st.text_area(
+            "Что попросить пациента донести",
+            value=doctor.get("requested_documents", ""),
+        )
+        doctor_note = st.text_area("Комментарий врача", value=doctor.get("note", ""))
+        save_doctor_fields = st.form_submit_button("Сохранить служебные поля")
+    if save_doctor_fields:
+        update_doctor_fields(
+            submission["id"],
+            doctor_status,
+            doctor_note,
+            requested_documents,
+            appointment_date,
+        )
+        st.success("Служебные поля сохранены.")
+        st.rerun()
 
     st.subheader("Резюме для врача")
     st.text(submission.get("summary", "Резюме не сформировано"))
@@ -988,6 +1193,7 @@ def render_doctor_dashboard() -> None:
             "common": submission.get("common"),
             "branch": submission.get("branch"),
             "additional_comment": submission.get("additional_comment"),
+            "doctor": submission.get("doctor"),
         },
         expanded=False,
     )
