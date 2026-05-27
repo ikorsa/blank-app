@@ -8,6 +8,8 @@ from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import streamlit as st
 from reportlab.lib.pagesizes import A4
@@ -30,6 +32,9 @@ SMTP_PASSWORD = os.getenv("ANAMNES_SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("ANAMNES_SMTP_FROM", SMTP_USER)
 SMTP_TO = os.getenv("ANAMNES_SMTP_TO", "")
 PDF_FONT_NAME = "DejaVuSans"
+PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech")
+TELEGRAM_BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("ANAMNES_TELEGRAM_CHAT_ID", "")
 
 MAIN_REASONS = {
     "thyroid": "Щитовидная железа",
@@ -573,6 +578,34 @@ def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
     return True, f"Копия анкеты отправлена на {SMTP_TO}."
 
 
+def telegram_notifications_configured() -> bool:
+    return bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+
+
+def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
+    if not telegram_notifications_configured():
+        return False, "Telegram-уведомление не настроено."
+
+    patient = submission["patient"]
+    reason = MAIN_REASONS.get(submission["main_reason"], submission["main_reason"])
+    text = "\n".join(
+        [
+            "Новая анкета эндокринолога",
+            f"Пациент: {format_answer(patient.get('full_name'))}",
+            f"Телефон: {format_answer(patient.get('phone'))}",
+            f"Причина: {reason}",
+            f"ID: {submission['id']}",
+            f"Открыть кабинет: {PUBLIC_URL}",
+        ]
+    )
+    payload = urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text})
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?{payload}"
+    with urlopen(url, timeout=15) as response:
+        if response.status != 200:
+            return False, f"Telegram вернул HTTP {response.status}."
+    return True, "Telegram-уведомление отправлено."
+
+
 def load_submissions() -> list[dict[str, Any]]:
     init_storage()
     submissions = []
@@ -741,6 +774,12 @@ def render_patient_form() -> None:
             st.warning(email_message)
     except Exception as exc:
         st.warning(f"Анкета сохранена, но email-копию отправить не удалось: {exc}")
+    try:
+        telegram_sent, telegram_message = send_telegram_notification(submission)
+        if telegram_sent:
+            st.success(telegram_message)
+    except Exception as exc:
+        st.warning(f"Анкета сохранена, но Telegram-уведомление отправить не удалось: {exc}")
     with st.expander("Предварительное резюме", expanded=True):
         st.text(submission["summary"])
 

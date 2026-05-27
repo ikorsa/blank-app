@@ -64,6 +64,18 @@ export ANAMNES_SMTP_TO="igor.korsa@gmail.com"
 
 Письмо содержит текстовое резюме и JSON-анкеты во вложении. Загруженные пациентом файлы не прикладываются к письму; они доступны в кабинете врача.
 
+## Telegram-уведомления
+
+Опционально можно отправлять врачу короткое Telegram-уведомление о новой анкете. Для этого создайте бота через `@BotFather`, получите token и узнайте `chat_id` получателя.
+
+```bash
+export ANAMNES_PUBLIC_URL="https://anamnes.ikorsakov.tech"
+export ANAMNES_TELEGRAM_BOT_TOKEN="123456:telegram-token"
+export ANAMNES_TELEGRAM_CHAT_ID="123456789"
+```
+
+Если переменные не заданы, приложение просто не отправляет Telegram-уведомления.
+
 ## Хранение данных
 
 По умолчанию данные сохраняются в папку:
