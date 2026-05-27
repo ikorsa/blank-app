@@ -668,55 +668,54 @@ def render_patient_form() -> None:
             "При острых симптомах обратитесь за срочной медицинской помощью."
         )
 
-    with st.form("anamnesis_form", clear_on_submit=False):
-        st.subheader("Согласие")
-        consent = st.checkbox(
-            "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
-            key="consent",
+    st.subheader("Согласие")
+    consent = st.checkbox(
+        "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
+        key="consent",
+    )
+
+    st.subheader("Базовые данные")
+    col1, col2 = st.columns(2)
+    with col1:
+        full_name = st.text_input("ФИО", key="patient_full_name")
+        age = st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
+        sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
+        phone = st.text_input("Телефон для связи", key="patient_phone")
+    with col2:
+        city = st.text_input("Город", key="patient_city")
+        height_cm = st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
+        weight_kg = st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
+    reproductive_status = "Не применимо"
+    if sex == "Женский":
+        reproductive_status = st.selectbox(
+            "Беременность / лактация",
+            ["Нет", "Беременность", "Лактация", "Планирую беременность", "Менопауза", "Не знаю"],
+            key="patient_reproductive_status",
         )
 
-        st.subheader("Базовые данные")
-        col1, col2 = st.columns(2)
-        with col1:
-            full_name = st.text_input("ФИО", key="patient_full_name")
-            age = st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
-            sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
-            phone = st.text_input("Телефон для связи", key="patient_phone")
-        with col2:
-            city = st.text_input("Город", key="patient_city")
-            height_cm = st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
-            weight_kg = st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
-        reproductive_status = "Не применимо"
-        if sex == "Женский":
-            reproductive_status = st.selectbox(
-                "Беременность / лактация",
-                ["Нет", "Беременность", "Лактация", "Планирую беременность", "Менопауза", "Не знаю"],
-                key="patient_reproductive_status",
-            )
+    st.subheader("Срочные симптомы")
+    urgent_symptoms = st.multiselect(
+        "Есть ли сейчас что-то из перечисленного?",
+        URGENT_SYMPTOMS,
+        key="urgent_symptoms",
+    )
 
-        st.subheader("Срочные симптомы")
-        urgent_symptoms = st.multiselect(
-            "Есть ли сейчас что-то из перечисленного?",
-            URGENT_SYMPTOMS,
-            key="urgent_symptoms",
-        )
+    st.subheader("Причина обращения")
+    main_reason = selectbox_from_map("Что является основной причиной обращения?", MAIN_REASONS, "main_reason")
 
-        st.subheader("Причина обращения")
-        main_reason = selectbox_from_map("Что является основной причиной обращения?", MAIN_REASONS, "main_reason")
+    common = render_common_questions()
+    branch = render_branch(main_reason, sex)
 
-        common = render_common_questions()
-        branch = render_branch(main_reason, sex)
+    st.subheader("Файлы и комментарий")
+    uploaded_files = st.file_uploader(
+        "Загрузите анализы, УЗИ, выписки, если есть",
+        type=["pdf", "jpg", "jpeg", "png"],
+        accept_multiple_files=True,
+        key="uploaded_files",
+    )
+    additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
 
-        st.subheader("Файлы и комментарий")
-        uploaded_files = st.file_uploader(
-            "Загрузите анализы, УЗИ, выписки, если есть",
-            type=["pdf", "jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            key="uploaded_files",
-        )
-        additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
-
-        submitted = st.form_submit_button("Отправить анкету врачу", type="primary")
+    submitted = st.button("Отправить анкету врачу", type="primary")
 
     if urgent_symptoms:
         st.error(
