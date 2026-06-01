@@ -2,8 +2,9 @@ import json
 import os
 import re
 import smtplib
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
@@ -42,6 +43,10 @@ APP_TITLE = "Анамнез эндокринолога"
 DATA_DIR = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
 SUBMISSIONS_DIR = DATA_DIR / "submissions"
 UPLOADS_DIR = DATA_DIR / "uploads"
+DRAFTS_DIR = DATA_DIR / "drafts"
+DRAFT_UPLOADS_DIR = DATA_DIR / "draft_uploads"
+DRAFT_RETENTION_DAYS = int(os.getenv("ANAMNES_DRAFT_RETENTION_DAYS", "30"))
+AUTOSAVE_INTERVAL_SECONDS = int(os.getenv("ANAMNES_AUTOSAVE_INTERVAL_SECONDS", "150"))
 DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
 ADMIN_PASSWORD = os.getenv("ANAMNES_ADMIN_PASSWORD", "admin")
 SMTP_HOST = os.getenv("ANAMNES_SMTP_HOST", "")
@@ -87,6 +92,104 @@ SUBMISSION_STATUSES = {
 def init_storage() -> None:
     SUBMISSIONS_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+    DRAFT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    purge_expired_drafts()
+
+
+BRANCH_SESSION_KEYS: dict[str, dict[str, str]] = {
+    "thyroid": {
+        "diagnosis": "thyroid_diagnosis",
+        "medications": "thyroid_medications",
+        "dose": "thyroid_dose",
+        "last_lab_date": "thyroid_last_lab_date",
+        "last_tsh_date": "thyroid_last_tsh_date",
+        "last_tsh_value": "thyroid_last_tsh_value",
+        "free_t4_value": "thyroid_free_t4",
+        "free_t3_value": "thyroid_free_t3",
+        "antibodies": "thyroid_antibodies",
+        "ultrasound": "thyroid_ultrasound",
+        "ultrasound_findings": "thyroid_ultrasound_findings",
+        "symptoms": "thyroid_symptoms",
+    },
+    "diabetes": {
+        "diagnosis": "diabetes_diagnosis",
+        "first_detected": "diabetes_first_detected",
+        "medications": "diabetes_medications",
+        "medications_details": "diabetes_medications_details",
+        "insulin": "diabetes_insulin",
+        "fasting_glucose": "diabetes_fasting_glucose",
+        "post_meal_glucose": "diabetes_post_meal_glucose",
+        "hba1c": "diabetes_hba1c",
+        "hypoglycemia": "diabetes_hypoglycemia",
+        "complications": "diabetes_complications",
+        "insulin_types": "diabetes_insulin_types",
+        "insulin_regimen": "diabetes_insulin_regimen",
+        "insulin_daily_units": "diabetes_insulin_daily_units",
+    },
+    "weight": {
+        "waist_cm": "weight_waist_cm",
+        "weight_gain_started": "weight_gain_started",
+        "weight_gain_amount": "weight_gain_amount",
+        "max_weight": "weight_max_weight",
+        "appetite": "weight_appetite",
+        "previous_attempts": "weight_previous_attempts",
+        "weight_loss_result": "weight_loss_result",
+        "night_eating": "weight_night_eating",
+        "snoring": "weight_snoring",
+        "sleep_duration": "weight_sleep_duration",
+        "physical_activity": "weight_physical_activity",
+        "hypertension": "weight_hypertension",
+        "weight_gain_medications": "weight_gain_medications",
+        "metabolic_tests": "weight_metabolic_tests",
+    },
+    "hormones": {
+        "libido": "hormones_libido",
+        "fertility": "hormones_fertility",
+        "hormonal_meds": "hormones_meds_male",
+        "cycle_regular": "hormones_cycle_regular",
+        "cycle_length": "hormones_cycle_length",
+        "long_delays": "hormones_long_delays",
+        "acne": "hormones_acne",
+        "hirsutism": "hormones_hirsutism",
+        "hair_loss": "hormones_hair_loss",
+        "pregnancy_history": "hormones_pregnancy_history",
+        "pregnancy_plans": "hormones_pregnancy_plans",
+    },
+    "fatigue": {
+        "main_issue": "fatigue_main_issue",
+        "duration": "fatigue_duration",
+        "weight_change": "fatigue_weight_change",
+        "sleep": "fatigue_sleep",
+        "recent_tests": "fatigue_recent_tests",
+    },
+    "bone": {
+        "diagnosis": "bone_diagnosis",
+        "low_trauma_fractures": "bone_fractures",
+        "densitometry": "bone_densitometry",
+        "supplements": "bone_supplements",
+        "kidney_stones": "bone_kidney_stones",
+    },
+    "other": {
+        "details": "other_details",
+        "expectations": "other_expectations",
+    },
+}
+
+COMMON_SESSION_KEYS = {
+    "complaints": "common_complaints",
+    "complaints_started": "common_complaints_started",
+    "chronic_conditions": "common_chronic",
+    "chronic_conditions_other": "common_chronic_other",
+    "surgeries": "common_surgeries",
+    "medications": "common_medications_select",
+    "medications_details": "common_medications_details",
+    "allergy_status": "common_allergy_status",
+    "allergies_details": "common_allergies_details",
+    "family_history": "common_family_history",
+    "blood_pressure": "common_bp",
+    "smoking": "common_smoking",
+}
 
 
 def default_doctor() -> dict[str, str]:
@@ -821,13 +924,263 @@ def build_summary(submission: dict[str, Any]) -> str:
         )
     return "\n".join(lines)
 
-def save_submission(submission: dict[str, Any], uploaded_files: list[Any]) -> str:
+
+def draft_resume_url(doctor_id: str, draft_id: str) -> str:
+    return f"{PUBLIC_URL.rstrip('/')}/?{urlencode({'doctor': doctor_id, 'draft': draft_id})}"
+
+
+def purge_expired_drafts() -> None:
+    if not DRAFTS_DIR.exists():
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DRAFT_RETENTION_DAYS)
+    for path in DRAFTS_DIR.glob("*.json"):
+        try:
+            draft = json.loads(path.read_text(encoding="utf-8"))
+            updated = datetime.fromisoformat(draft.get("updated_at", draft.get("created_at", "")))
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            continue
+        if updated < cutoff:
+            delete_draft(path.stem)
+
+
+def load_draft(draft_id: str) -> dict[str, Any] | None:
+    path = DRAFTS_DIR / f"{safe_filename(draft_id)}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def delete_draft(draft_id: str) -> None:
+    draft_id = safe_filename(draft_id)
+    draft_path = DRAFTS_DIR / f"{draft_id}.json"
+    if draft_path.exists():
+        draft_path.unlink()
+    upload_dir = DRAFT_UPLOADS_DIR / draft_id
+    if upload_dir.exists():
+        for file_path in upload_dir.iterdir():
+            if file_path.is_file():
+                file_path.unlink()
+        upload_dir.rmdir()
+
+
+def apply_draft_to_session(draft: dict[str, Any]) -> None:
+    patient = draft.get("patient", {})
+    st.session_state["patient_full_name"] = patient.get("full_name", "")
+    st.session_state["patient_age"] = int(patient.get("age") or 0)
+    st.session_state["patient_sex"] = patient.get("sex", "Женский")
+    st.session_state["patient_phone"] = patient.get("phone", "")
+    st.session_state["patient_city"] = patient.get("city", "")
+    st.session_state["patient_height"] = int(patient.get("height_cm") or 0)
+    st.session_state["patient_weight"] = float(patient.get("weight_kg") or 0.0)
+    if patient.get("sex") == "Женский":
+        st.session_state["patient_reproductive_status"] = patient.get("reproductive_status", "Нет")
+
+    urgent = draft.get("urgent_symptoms") or []
+    st.session_state["urgent_symptoms"] = urgent if urgent else [NO_URGENT_SYMPTOMS]
+    st.session_state["main_reasons"] = draft.get("main_reasons") or []
+    st.session_state["additional_comment"] = draft.get("additional_comment", "")
+
+    common = draft.get("common") or {}
+    for field, key in COMMON_SESSION_KEYS.items():
+        if field in common:
+            st.session_state[key] = common[field]
+
+    branch = draft.get("branch") or {}
+    sex = patient.get("sex", "Женский")
+    for reason, answers in branch.items():
+        if not isinstance(answers, dict):
+            continue
+        mapping = BRANCH_SESSION_KEYS.get(reason, {})
+        for field, value in answers.items():
+            if field == "hormonal_meds" and reason == "hormones":
+                key = "hormones_meds_male" if sex == "Мужской" else "hormones_meds"
+            else:
+                key = mapping.get(field)
+            if key:
+                st.session_state[key] = value
+
+
+def init_draft_from_query() -> str | None:
+    draft_id = get_query_param("draft").strip()
+    if not draft_id:
+        return st.session_state.get("active_draft_id")
+
+    draft_id = safe_filename(draft_id)
+    if st.session_state.get(f"draft_applied_{draft_id}"):
+        st.session_state["active_draft_id"] = draft_id
+        return draft_id
+
+    draft = load_draft(draft_id)
+    if not draft:
+        st.warning("Черновик не найден или срок хранения истёк.")
+        return None
+
+    apply_draft_to_session(draft)
+    st.session_state[f"draft_applied_{draft_id}"] = True
+    st.session_state["active_draft_id"] = draft_id
+    st.session_state["draft_last_autosave_ts"] = time.time()
+    st.session_state.pop("draft_files_to_remove", None)
+    return draft_id
+
+
+def save_draft_files(
+    draft_id: str,
+    uploaded_files: list[Any],
+    existing_files: list[dict[str, Any]],
+    remove_stored: set[str],
+) -> list[dict[str, Any]]:
+    upload_dir = DRAFT_UPLOADS_DIR / draft_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved_files = []
+
+    for file_info in existing_files:
+        stored_name = file_info.get("stored_name", "")
+        if stored_name in remove_stored:
+            path = Path(file_info.get("path", ""))
+            if path.exists():
+                path.unlink()
+            continue
+        if Path(file_info.get("path", "")).exists():
+            saved_files.append(file_info)
+
+    for uploaded_file in uploaded_files or []:
+        filename = safe_filename(uploaded_file.name)
+        path = upload_dir / filename
+        counter = 1
+        while path.exists():
+            stem = Path(filename).stem
+            suffix = Path(filename).suffix
+            path = upload_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+        data = uploaded_file.getbuffer()
+        path.write_bytes(data)
+        saved_files.append(
+            {
+                "original_name": uploaded_file.name,
+                "stored_name": path.name,
+                "path": str(path),
+                "type": uploaded_file.type,
+                "size": len(data),
+            }
+        )
+    return saved_files
+
+
+def save_draft(
+    draft_payload: dict[str, Any],
+    uploaded_files: list[Any],
+    draft_id: str | None = None,
+) -> str:
+    init_storage()
+    draft_id = safe_filename(draft_id or str(uuid.uuid4()))
+    existing = load_draft(draft_id) or {}
+    remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
+    existing_files = existing.get("files", [])
+    saved_files = save_draft_files(draft_id, uploaded_files, existing_files, remove_stored)
+
+    now = now_iso()
+    draft = {
+        **draft_payload,
+        "id": draft_id,
+        "status": "draft",
+        "created_at": existing.get("created_at", now),
+        "updated_at": now,
+        "files": saved_files,
+    }
+    (DRAFTS_DIR / f"{draft_id}.json").write_text(
+        json.dumps(draft, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    st.session_state["active_draft_id"] = draft_id
+    st.session_state[f"draft_applied_{draft_id}"] = True
+    st.session_state["draft_last_autosave_ts"] = time.time()
+    st.session_state["draft_files_to_remove"] = []
+    return draft_id
+
+
+def render_draft_saved_files(draft_id: str, files: list[dict[str, Any]]) -> None:
+    if not files:
+        return
+    st.caption("Файлы, уже сохранённые в черновике:")
+    remove_list = list(st.session_state.get("draft_files_to_remove") or [])
+    for file_info in files:
+        path = Path(file_info.get("path", ""))
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            if path.exists():
+                st.download_button(
+                    f"Скачать {file_info['original_name']}",
+                    data=path.read_bytes(),
+                    file_name=file_info["original_name"],
+                    mime=file_info.get("type") or "application/octet-stream",
+                    key=f"draft_dl_{draft_id}_{file_info['stored_name']}",
+                )
+            else:
+                st.write(f"{file_info['original_name']} (файл не найден на сервере)")
+        with col2:
+            if st.button("Удалить", key=f"draft_rm_{draft_id}_{file_info['stored_name']}"):
+                remove_list.append(file_info["stored_name"])
+                st.session_state["draft_files_to_remove"] = remove_list
+                st.rerun()
+    st.session_state["draft_files_to_remove"] = remove_list
+
+
+def maybe_autosave_draft(
+    draft_payload: dict[str, Any],
+    uploaded_files: list[Any],
+    draft_id: str | None,
+) -> None:
+    if not draft_id:
+        return
+    last_save = st.session_state.get("draft_last_autosave_ts", 0.0)
+    if time.time() - last_save < AUTOSAVE_INTERVAL_SECONDS:
+        return
+    save_draft(draft_payload, uploaded_files, draft_id=draft_id)
+    st.session_state["draft_autosave_notice"] = (
+        f"Черновик автоматически сохранён ({datetime.now().strftime('%H:%M')})."
+    )
+
+
+def save_submission(
+    submission: dict[str, Any],
+    uploaded_files: list[Any],
+    copy_files: list[dict[str, Any]] | None = None,
+) -> str:
     init_storage()
     submission_id = submission["id"]
     upload_dir = UPLOADS_DIR / submission_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
+    for file_info in copy_files or []:
+        src = Path(file_info.get("path", ""))
+        if not src.exists():
+            continue
+        filename = safe_filename(file_info.get("original_name") or src.name)
+        path = upload_dir / filename
+        counter = 1
+        while path.exists():
+            stem = Path(filename).stem
+            suffix = Path(filename).suffix
+            path = upload_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+        data = src.read_bytes()
+        path.write_bytes(data)
+        saved_files.append(
+            {
+                "original_name": file_info.get("original_name") or filename,
+                "stored_name": path.name,
+                "path": str(path),
+                "type": file_info.get("type"),
+                "size": len(data),
+            }
+        )
+
     for uploaded_file in uploaded_files:
         filename = safe_filename(uploaded_file.name)
         path = upload_dir / filename
@@ -1031,12 +1384,66 @@ def filter_submissions(
     return filtered
 
 
+def build_patient_form_payload(
+    assigned_doctor: dict[str, str],
+    full_name: str,
+    age: int,
+    sex: str,
+    phone: str,
+    city: str,
+    height_cm: int,
+    weight_kg: float,
+    reproductive_status: str,
+    selected_reasons: list[str],
+    selected_urgent_symptoms: list[str],
+    urgent_symptoms: list[str],
+    common: dict[str, Any],
+    branch: dict[str, Any],
+    additional_comment: str,
+    files: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "created_at": now_iso(),
+        "assigned_doctor": public_doctor_info(assigned_doctor),
+        "main_reasons": selected_reasons,
+        "urgent_symptoms": selected_urgent_symptoms
+        or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
+        "patient": {
+            "full_name": full_name.strip(),
+            "age": int(age),
+            "sex": sex,
+            "phone": phone.strip(),
+            "city": city.strip(),
+            "height_cm": int(height_cm) if height_cm else None,
+            "weight_kg": float(weight_kg) if weight_kg else None,
+            "reproductive_status": reproductive_status,
+        },
+        "common": common,
+        "branch": branch,
+        "additional_comment": additional_comment,
+        "files": files or [],
+    }
+
+
 def render_patient_form() -> None:
     st.title(APP_TITLE)
     st.caption("Предварительный сбор анамнеза перед консультацией эндокринолога")
     doctors = load_doctors()
+    active_draft_id = init_draft_from_query()
     assigned_doctor = resolve_patient_doctor(doctors)
     st.info(f"Анкета будет отправлена врачу: {doctor_display_name(assigned_doctor)}")
+
+    if autosave_notice := st.session_state.pop("draft_autosave_notice", None):
+        st.success(autosave_notice)
+    if active_draft_id:
+        draft_meta = load_draft(active_draft_id) or {}
+        updated = draft_meta.get("updated_at", "")
+        st.success(
+            f"Загружен черновик. Последнее сохранение (UTC): {updated}. "
+            f"Можно продолжить заполнение и отправить врачу, когда будете готовы."
+        )
+        resume = draft_resume_url(assigned_doctor["id"], active_draft_id)
+        st.text_input("Ссылка для продолжения на этом или другом устройстве", value=resume, disabled=True)
 
     with st.expander("Что важно знать перед заполнением", expanded=True):
         st.write(
@@ -1084,48 +1491,55 @@ def render_patient_form() -> None:
     branch = render_branches(selected_reasons, sex) if selected_reasons else {}
 
     st.subheader("Файлы и комментарий")
+    draft_files: list[dict[str, Any]] = []
+    if active_draft_id:
+        draft_record = load_draft(active_draft_id) or {}
+        draft_files = draft_record.get("files", [])
+        render_draft_saved_files(active_draft_id, draft_files)
     uploaded_files = st.file_uploader(
-        "Загрузите анализы, УЗИ, выписки, если есть",
+        "Загрузите анализы, УЗИ, выписки, если есть (новые файлы добавятся к черновику)",
         type=["pdf", "jpg", "jpeg", "png"],
         accept_multiple_files=True,
         key="uploaded_files",
     )
     additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
 
-    preview_submission = {
-        "id": "preview",
-        "created_at": now_iso(),
-        "status": "submitted",
-        "assigned_doctor": public_doctor_info(assigned_doctor),
-        "main_reasons": selected_reasons,
-        "urgent_symptoms": selected_urgent_symptoms or ([NO_URGENT_SYMPTOMS] if NO_URGENT_SYMPTOMS in urgent_symptoms else []),
-        "patient": {
-            "full_name": full_name.strip(),
-            "age": int(age),
-            "sex": sex,
-            "phone": phone.strip(),
-            "city": city.strip(),
-            "height_cm": int(height_cm) if height_cm else None,
-            "weight_kg": float(weight_kg) if weight_kg else None,
-            "reproductive_status": reproductive_status,
-        },
-        "common": common,
-        "branch": branch,
-        "additional_comment": additional_comment,
-        "files": [
-            {
-                "original_name": uploaded_file.name,
-                "stored_name": uploaded_file.name,
-                "path": "",
-                "type": uploaded_file.type,
-                "size": uploaded_file.size,
-            }
-            for uploaded_file in (uploaded_files or [])
-        ],
-    }
+    form_payload = build_patient_form_payload(
+        assigned_doctor,
+        full_name,
+        int(age),
+        sex,
+        phone,
+        city,
+        int(height_cm),
+        float(weight_kg),
+        reproductive_status,
+        selected_reasons,
+        selected_urgent_symptoms,
+        urgent_symptoms,
+        common,
+        branch,
+        additional_comment,
+    )
+    preview_submission = {**form_payload, "id": "preview", "status": "submitted"}
 
     with st.expander("Предпросмотр резюме перед отправкой", expanded=False):
         st.text(build_summary(preview_submission))
+
+    st.subheader("Черновик")
+    st.caption(
+        f"Черновик хранится на сервере до {DRAFT_RETENTION_DAYS} дней. "
+        f"Автосохранение каждые {AUTOSAVE_INTERVAL_SECONDS // 60} мин., если открыта ссылка с черновиком. "
+        "Врач увидит анкету только после кнопки «Отправить»."
+    )
+    save_draft_clicked = st.button("Сохранить черновик и получить ссылку", type="secondary")
+    if save_draft_clicked:
+        draft_id = save_draft(form_payload, uploaded_files or [], draft_id=active_draft_id)
+        st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+        link = draft_resume_url(assigned_doctor["id"], draft_id)
+        st.success("Черновик сохранён. Сохраните ссылку или отправьте её себе в Telegram.")
+        st.text_input("Ссылка для продолжения", value=link, disabled=True)
+        active_draft_id = draft_id
 
     st.subheader("Согласие и отправка")
     consent = st.checkbox(
@@ -1141,6 +1555,7 @@ def render_patient_form() -> None:
         )
 
     if not submitted:
+        maybe_autosave_draft(form_payload, uploaded_files or [], active_draft_id)
         return
 
     errors = []
@@ -1160,8 +1575,23 @@ def render_patient_form() -> None:
             st.error(error)
         return
 
-    submission = {**preview_submission, "id": str(uuid.uuid4()), "created_at": now_iso(), "files": []}
-    submission_id = save_submission(submission, uploaded_files or [])
+    draft_id = st.session_state.get("active_draft_id")
+    draft_copy_files: list[dict[str, Any]] = []
+    if draft_id:
+        draft_record = load_draft(draft_id) or {}
+        remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
+        draft_copy_files = [
+            item
+            for item in draft_record.get("files", [])
+            if item.get("stored_name") not in remove_stored
+        ]
+
+    submission = {**preview_submission, "id": str(uuid.uuid4()), "created_at": now_iso(), "status": "submitted", "files": []}
+    submission_id = save_submission(submission, uploaded_files or [], copy_files=draft_copy_files)
+    if draft_id:
+        delete_draft(draft_id)
+        st.session_state.pop("active_draft_id", None)
+        st.session_state.pop(f"draft_applied_{draft_id}", None)
     st.success("Анкета отправлена врачу.")
     st.info(f"Номер анкеты: {submission_id}")
     try:

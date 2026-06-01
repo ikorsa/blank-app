@@ -208,6 +208,19 @@ sudo systemctl start anamnes-bot
 sudo systemctl status anamnes-bot --no-pager -l
 ```
 
+## Черновик анкеты
+
+Пациент может **сохранить прогресс** без отправки врачу:
+
+- кнопка «Сохранить черновик и получить ссылку»;
+- ссылка вида `https://anamnes.ikorsakov.tech/?doctor=ivanova&draft=...` — продолжение с другого устройства;
+- **автосохранение** каждые ~2,5 мин., если в URL есть `draft=...`;
+- файлы черновика хранятся в `data/draft_uploads/` (срок хранения по умолчанию 30 дней).
+
+После «Отправить анкету врачу» черновик удаляется, данные попадают в `data/submissions/`.
+
+Переменные: `ANAMNES_DRAFT_RETENTION_DAYS`, `ANAMNES_AUTOSAVE_INTERVAL_SECONDS`.
+
 ## Хранение данных
 
 По умолчанию данные сохраняются в папку:
