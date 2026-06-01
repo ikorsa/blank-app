@@ -221,6 +221,13 @@ sudo systemctl status anamnes-bot --no-pager -l
 
 Переменные: `ANAMNES_DRAFT_RETENTION_DAYS`, `ANAMNES_AUTOSAVE_INTERVAL_SECONDS`.
 
+## PostgreSQL и админка врачей
+
+- Без `ANAMNES_DATABASE_URL` — врачи в `doctors.json`, анкеты в `data/submissions/`.
+- С `ANAMNES_DATABASE_URL` — врачи и анкеты в PostgreSQL (файлы по-прежнему на диске).
+- Раздел **«Управление врачами»** в приложении: логин `admin`, пароль `ANAMNES_ADMIN_PASSWORD`.
+- Миграция JSON → PostgreSQL: `python scripts/migrate_json_to_postgres.py` (см. `deploy/DEPLOY.md`).
+
 ## Хранение данных
 
 По умолчанию данные сохраняются в папку:

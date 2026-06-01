@@ -91,6 +91,40 @@ sudo systemctl restart anamnes anamnes-bot
 
 См. `scripts/backup_data.sh` и cron в README.
 
+## 9. PostgreSQL (опционально)
+
+По умолчанию анкеты и врачи хранятся в `data/` (JSON). Для PostgreSQL:
+
+```bash
+sudo apt install -y postgresql
+sudo -u postgres createuser anamnes --pwprompt
+sudo -u postgres createdb anamnes -O anamnes
+```
+
+В `/etc/anamnes.env` (см. `deploy/postgres.env.example`):
+
+```bash
+ANAMNES_DATABASE_URL=postgresql://anamnes:PASSWORD@127.0.0.1:5432/anamnes
+```
+
+Миграция существующих JSON:
+
+```bash
+cd /opt/anamnes
+source .venv/bin/activate
+pip install -r requirements.txt
+ANAMNES_DATABASE_URL='postgresql://...' python scripts/migrate_json_to_postgres.py
+sudo -n /usr/bin/systemctl restart anamnes anamnes-bot
+```
+
+Файлы загрузок остаются в `data/uploads/` и `data/draft_uploads/`.
+
+## 10. Админка врачей
+
+В приложении: **Управление врачами** (логин `admin`, пароль `ANAMNES_ADMIN_PASSWORD`).
+
+Добавление/редактирование врачей без `nano` на сервере. Работает и с JSON, и с PostgreSQL.
+
 ## Важно
 
 - На ПК **не запускайте** `telegram_bot.py` с тем же токеном, что на сервере (ошибка 409).

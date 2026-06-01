@@ -30,6 +30,21 @@ def _load_local_env() -> None:
 
 _load_local_env()
 
+import anamnes_storage as store
+from anamnes_storage import (
+    delete_draft,
+    load_doctors,
+    load_draft,
+    load_submissions,
+    save_draft_record,
+    set_doctor_active,
+    update_doctor_fields,
+    update_submission_status,
+    upsert_doctor,
+    use_postgres,
+    write_submission_record,
+)
+
 import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -90,11 +105,8 @@ SUBMISSION_STATUSES = {
 
 
 def init_storage() -> None:
-    SUBMISSIONS_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
-    DRAFT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    purge_expired_drafts()
+    store.init_storage()
+    store.purge_expired_drafts()
 
 
 BRANCH_SESSION_KEYS: dict[str, dict[str, str]] = {
@@ -190,46 +202,6 @@ COMMON_SESSION_KEYS = {
     "blood_pressure": "common_bp",
     "smoking": "common_smoking",
 }
-
-
-def default_doctor() -> dict[str, str]:
-    return {
-        "id": "default",
-        "name": "Врач по умолчанию",
-        "specialty": "Эндокринолог",
-        "email": SMTP_TO,
-        "telegram_chat_id": TELEGRAM_CHAT_ID,
-        "password": ADMIN_PASSWORD,
-    }
-
-
-def normalize_doctor(doctor: dict[str, Any]) -> dict[str, str]:
-    doctor_id = safe_filename(str(doctor.get("id") or doctor.get("slug") or "")).lower()
-    return {
-        "id": doctor_id,
-        "name": str(doctor.get("name") or doctor_id or "Врач"),
-        "specialty": str(doctor.get("specialty") or "Эндокринолог"),
-        "email": str(doctor.get("email") or ""),
-        "telegram_chat_id": str(doctor.get("telegram_chat_id") or ""),
-        "password": str(doctor.get("password") or ""),
-    }
-
-
-def load_doctors() -> list[dict[str, str]]:
-    if not DOCTORS_FILE.exists():
-        return [default_doctor()]
-    try:
-        raw = json.loads(DOCTORS_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return [default_doctor()]
-
-    items = raw.get("doctors", raw) if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        return [default_doctor()]
-
-    doctors = [normalize_doctor(item) for item in items if isinstance(item, dict)]
-    doctors = [doctor for doctor in doctors if doctor["id"] and doctor["name"]]
-    return doctors or [default_doctor()]
 
 
 def public_doctor_info(doctor: dict[str, str] | None) -> dict[str, str]:
@@ -929,45 +901,6 @@ def draft_resume_url(doctor_id: str, draft_id: str) -> str:
     return f"{PUBLIC_URL.rstrip('/')}/?{urlencode({'doctor': doctor_id, 'draft': draft_id})}"
 
 
-def purge_expired_drafts() -> None:
-    if not DRAFTS_DIR.exists():
-        return
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DRAFT_RETENTION_DAYS)
-    for path in DRAFTS_DIR.glob("*.json"):
-        try:
-            draft = json.loads(path.read_text(encoding="utf-8"))
-            updated = datetime.fromisoformat(draft.get("updated_at", draft.get("created_at", "")))
-            if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=timezone.utc)
-        except (json.JSONDecodeError, ValueError, TypeError):
-            continue
-        if updated < cutoff:
-            delete_draft(path.stem)
-
-
-def load_draft(draft_id: str) -> dict[str, Any] | None:
-    path = DRAFTS_DIR / f"{safe_filename(draft_id)}.json"
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-
-
-def delete_draft(draft_id: str) -> None:
-    draft_id = safe_filename(draft_id)
-    draft_path = DRAFTS_DIR / f"{draft_id}.json"
-    if draft_path.exists():
-        draft_path.unlink()
-    upload_dir = DRAFT_UPLOADS_DIR / draft_id
-    if upload_dir.exists():
-        for file_path in upload_dir.iterdir():
-            if file_path.is_file():
-                file_path.unlink()
-        upload_dir.rmdir()
-
-
 def apply_draft_to_session(draft: dict[str, Any]) -> None:
     patient = draft.get("patient", {})
     st.session_state["patient_full_name"] = patient.get("full_name", "")
@@ -1092,10 +1025,7 @@ def save_draft(
         "updated_at": now,
         "files": saved_files,
     }
-    (DRAFTS_DIR / f"{draft_id}.json").write_text(
-        json.dumps(draft, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    save_draft_record(draft)
     st.session_state["active_draft_id"] = draft_id
     st.session_state[f"draft_applied_{draft_id}"] = True
     st.session_state["draft_last_autosave_ts"] = time.time()
@@ -1205,19 +1135,8 @@ def save_submission(
 
     submission["files"] = saved_files
     submission["summary"] = build_summary(submission)
-    (SUBMISSIONS_DIR / f"{submission_id}.json").write_text(
-        json.dumps(submission, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_submission_record(submission)
     return submission_id
-
-
-def write_submission_record(submission: dict[str, Any]) -> None:
-    submission["summary"] = build_summary(submission)
-    (SUBMISSIONS_DIR / f"{submission['id']}.json").write_text(
-        json.dumps(submission, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
 
 
 def email_notifications_configured() -> bool:
@@ -1291,51 +1210,6 @@ def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
         if response.status != 200:
             return False, f"Telegram вернул HTTP {response.status}."
     return True, "Telegram-уведомление отправлено."
-
-
-def load_submissions() -> list[dict[str, Any]]:
-    init_storage()
-    submissions = []
-    for path in SUBMISSIONS_DIR.glob("*.json"):
-        try:
-            submissions.append(json.loads(path.read_text(encoding="utf-8")))
-        except json.JSONDecodeError:
-            continue
-    return sorted(submissions, key=lambda item: item.get("created_at", ""), reverse=True)
-
-
-def update_submission_status(submission_id: str, status: str) -> None:
-    path = SUBMISSIONS_DIR / f"{submission_id}.json"
-    if not path.exists():
-        raise FileNotFoundError(f"Анкета {submission_id} не найдена")
-    submission = json.loads(path.read_text(encoding="utf-8"))
-    submission["status"] = status
-    if status in {"viewed", "in_progress", "closed"}:
-        submission["viewed_at"] = submission.get("viewed_at") or now_iso()
-    write_submission_record(submission)
-
-
-def update_doctor_fields(
-    submission_id: str,
-    status: str,
-    note: str,
-    requested_documents: str,
-    appointment_date: str,
-) -> None:
-    path = SUBMISSIONS_DIR / f"{submission_id}.json"
-    if not path.exists():
-        raise FileNotFoundError(f"Анкета {submission_id} не найдена")
-    submission = json.loads(path.read_text(encoding="utf-8"))
-    submission["status"] = status
-    if status in {"viewed", "in_progress", "closed"}:
-        submission["viewed_at"] = submission.get("viewed_at") or now_iso()
-    submission["doctor"] = {
-        "note": note.strip(),
-        "requested_documents": requested_documents.strip(),
-        "appointment_date": appointment_date.strip(),
-        "updated_at": now_iso(),
-    }
-    write_submission_record(submission)
 
 
 def get_submission_doctor_id(submission: dict[str, Any]) -> str:
@@ -1814,20 +1688,147 @@ def render_doctor_dashboard() -> None:
         )
 
 
+def render_admin_panel() -> None:
+    st.title("Управление врачами")
+    backend = "PostgreSQL" if use_postgres() else f"JSON ({DOCTORS_FILE})"
+    st.caption(f"Хранилище: {backend}. Анкеты: {len(load_submissions())} шт.")
+
+    if ADMIN_PASSWORD == "admin":
+        st.warning("Используется пароль администратора по умолчанию. Задайте ANAMNES_ADMIN_PASSWORD.")
+
+    if not st.session_state.get("admin_panel_authenticated"):
+        login = st.text_input("Логин администратора", value="admin")
+        password = st.text_input("Пароль администратора", type="password")
+        if st.button("Войти в управление"):
+            if login.strip().lower() == "admin" and password == ADMIN_PASSWORD:
+                st.session_state["admin_panel_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Неверный логин или пароль.")
+        return
+
+    if st.button("Выйти из управления"):
+        st.session_state["admin_panel_authenticated"] = False
+        st.rerun()
+
+    with st.expander("Добавить врача", expanded=False):
+        with st.form("admin_add_doctor"):
+            new_id = st.text_input("Код врача (латиница)", placeholder="ivanova", help="Используется в ссылке ?doctor=...")
+            new_name = st.text_input("ФИО")
+            new_specialty = st.text_input("Специальность", value="Эндокринолог")
+            new_email = st.text_input("Email для уведомлений")
+            new_telegram = st.text_input("Telegram chat_id врача")
+            new_password = st.text_input("Пароль для кабинета врача", type="password")
+            if st.form_submit_button("Создать врача"):
+                try:
+                    upsert_doctor(
+                        {
+                            "id": new_id.strip().lower(),
+                            "name": new_name.strip(),
+                            "specialty": new_specialty.strip() or "Эндокринолог",
+                            "email": new_email.strip(),
+                            "telegram_chat_id": new_telegram.strip(),
+                            "password": new_password,
+                            "is_active": True,
+                        }
+                    )
+                    st.success(f"Врач {new_id.strip().lower()} создан.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+    doctors = load_doctors(include_inactive=True)
+    if not doctors:
+        st.info("Список врачей пуст.")
+        return
+
+    def doctor_option_label(doctor_id: str) -> str:
+        doctor = next(item for item in doctors if item["id"] == doctor_id)
+        status = "" if doctor.get("is_active") != "false" else " [неактивен]"
+        return f"{doctor['name']} ({doctor_id}){status}"
+
+    selected_id = st.selectbox(
+        "Редактировать врача",
+        [doctor["id"] for doctor in doctors],
+        format_func=doctor_option_label,
+    )
+    selected = next(doctor for doctor in doctors if doctor["id"] == selected_id)
+
+    with st.form("admin_edit_doctor"):
+        edit_name = st.text_input("ФИО", value=selected.get("name", ""))
+        edit_specialty = st.text_input("Специальность", value=selected.get("specialty", "Эндокринолог"))
+        edit_email = st.text_input("Email", value=selected.get("email", ""))
+        edit_telegram = st.text_input("Telegram chat_id", value=selected.get("telegram_chat_id", ""))
+        edit_password = st.text_input("Новый пароль кабинета (пусто = не менять)", type="password")
+        edit_active = st.checkbox("Врач активен", value=selected.get("is_active") != "false")
+        if st.form_submit_button("Сохранить изменения"):
+            try:
+                upsert_doctor(
+                    {
+                        "id": selected_id,
+                        "name": edit_name.strip(),
+                        "specialty": edit_specialty.strip() or "Эндокринолог",
+                        "email": edit_email.strip(),
+                        "telegram_chat_id": edit_telegram.strip(),
+                        "password": edit_password.strip() or selected.get("password", ""),
+                        "is_active": edit_active,
+                    }
+                )
+                st.success("Данные врача сохранены.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+    toggle_col1, toggle_col2 = st.columns(2)
+    with toggle_col1:
+        if selected.get("is_active") != "false":
+            if st.button("Деактивировать врача"):
+                set_doctor_active(selected_id, active=False)
+                st.success("Врач деактивирован — новые пациенты не смогут выбрать его в ссылке.")
+                st.rerun()
+        else:
+            if st.button("Снова активировать врача"):
+                set_doctor_active(selected_id, active=True)
+                st.success("Врач снова активен.")
+                st.rerun()
+
+    st.subheader("Ссылки для пациентов")
+    st.text_input("Веб-анкета", value=f"{PUBLIC_URL.rstrip('/')}/?doctor={selected_id}", disabled=True)
+    st.text_input(
+        "Telegram-бот",
+        value=f"https://t.me/ikorsakov_anamnes_bot?start=doctor_{selected_id}",
+        disabled=True,
+    )
+
+    if use_postgres():
+        st.download_button(
+            "Скачать doctors.json (резервная копия)",
+            data=json.dumps({"doctors": load_doctors(include_inactive=True)}, ensure_ascii=False, indent=2),
+            file_name="doctors-backup.json",
+            mime="application/json",
+        )
+
+
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="🩺", layout="wide")
     init_storage()
 
     with st.sidebar:
         st.header(APP_TITLE)
-        page = st.radio("Раздел", ["Анкета пациента", "Кабинет врача"])
+        page = st.radio("Раздел", ["Анкета пациента", "Кабинет врача", "Управление врачами"])
         st.divider()
-        st.caption("MVP для тестирования. Не используйте реальные данные без HTTPS и настроенного доступа.")
+        if use_postgres():
+            st.caption("База: PostgreSQL")
+        else:
+            st.caption("База: JSON-файлы")
+        st.caption("Не используйте реальные данные без HTTPS и настроенного доступа.")
 
     if page == "Анкета пациента":
         render_patient_form()
-    else:
+    elif page == "Кабинет врача":
         render_doctor_dashboard()
+    else:
+        render_admin_panel()
 
 
 if __name__ == "__main__":

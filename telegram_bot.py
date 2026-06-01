@@ -25,41 +25,11 @@ def _load_local_env() -> None:
 
 _load_local_env()
 
-DATA_DIR = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
-DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
+from anamnes_storage import load_doctors
+
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech").rstrip("/")
 BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", "")
 POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
-
-
-def normalize_doctor(doctor: dict[str, Any]) -> dict[str, str]:
-    doctor_id = str(doctor.get("id") or doctor.get("slug") or "").strip().lower()
-    return {
-        "id": doctor_id,
-        "name": str(doctor.get("name") or doctor_id or "Врач"),
-        "specialty": str(doctor.get("specialty") or "Эндокринолог"),
-    }
-
-
-def load_doctors() -> list[dict[str, str]]:
-    if not DOCTORS_FILE.exists():
-        return [
-            {
-                "id": "default",
-                "name": "Врач по умолчанию",
-                "specialty": "Эндокринолог",
-            }
-        ]
-    try:
-        raw = json.loads(DOCTORS_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-
-    items = raw.get("doctors", raw) if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        return []
-    doctors = [normalize_doctor(item) for item in items if isinstance(item, dict)]
-    return [doctor for doctor in doctors if doctor["id"]]
 
 
 def get_doctor(doctors: list[dict[str, str]], doctor_id: str) -> dict[str, str] | None:
