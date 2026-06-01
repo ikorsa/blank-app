@@ -12,20 +12,24 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from anamnes_storage import (  # noqa: E402
-    DATABASE_URL,
     DOCTORS_FILE,
     DRAFTS_DIR,
     SUBMISSIONS_DIR,
+    get_database_url,
     init_postgres_schema,
     save_draft_record,
     upsert_doctor,
+    use_postgres,
     write_submission_record,
 )
 
 
 def main() -> None:
-    if not DATABASE_URL:
-        raise SystemExit("Set ANAMNES_DATABASE_URL before running migration.")
+    if not use_postgres():
+        raise SystemExit(
+            "Set ANAMNES_DATABASE_URL (e.g. in config/database.env) before running migration."
+        )
+    print(f"Migrating to {get_database_url().split('@')[-1]}")
 
     init_postgres_schema()
     doctors_count = 0
