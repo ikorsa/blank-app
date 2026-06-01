@@ -29,6 +29,7 @@ from anamnes_storage import load_doctors
 
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech").rstrip("/")
 BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", "")
+BOT_USERNAME = os.getenv("ANAMNES_TELEGRAM_BOT_USERNAME", "ikorsakov_anamnes_bot").lstrip("@")
 POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
 
 
@@ -68,13 +69,16 @@ def send_message(chat_id: int, text: str, reply_markup: dict[str, Any] | None = 
 def send_doctor_link(chat_id: int, doctor: dict[str, str]) -> None:
     url = intake_url(doctor["id"])
     text = (
-        "Анкета перед приемом эндокринолога.\n\n"
+        "Здравствуйте!\n\n"
+        "Анкета перед приёмом эндокринолога (10–15 минут).\n\n"
         f"Врач: {doctor_label(doctor)}\n\n"
-        "Нажмите кнопку ниже, чтобы заполнить анкету. Можно вернуться к ссылке позже."
+        "• Можно сохранить черновик и продолжить позже\n"
+        "• Не заменяет скорую помощь при острых симптомах\n\n"
+        "Нажмите кнопку ниже:"
     )
     keyboard = {
         "inline_keyboard": [
-            [{"text": "Заполнить анкету", "url": url}],
+            [{"text": "Открыть анкету", "url": url}],
         ]
     }
     send_message(chat_id, text, keyboard)
@@ -126,13 +130,29 @@ def handle_message(message: dict[str, Any]) -> None:
     if text.startswith("/help"):
         send_message(
             chat_id,
-            "Откройте персональную ссылку врача вида:\n"
-            "t.me/<bot>?start=doctor_ivanova\n\n"
-            "Или используйте /doctors для списка врачей.",
+            "Как заполнить анкету:\n\n"
+            f"1. Откройте ссылку от врача или t.me/{BOT_USERNAME}?start=doctor_КОД\n"
+            "2. Нажмите «Открыть анкету»\n"
+            "3. Заполните по шагам (10–15 мин)\n"
+            "4. При необходимости — «Сохранить черновик»\n"
+            "5. В конце — «Отправить врачу»\n\n"
+            "Команды: /doctors — список врачей\n"
+            "Если есть ссылка с черновиком — откройте её в браузере целиком.",
         )
         return
 
-    send_message(chat_id, "Я помогу открыть анкету перед приемом. Используйте /help или персональную ссылку врача.")
+    if "draft=" in text and "http" in text:
+        send_message(
+            chat_id,
+            "Откройте эту ссылку в браузере на телефоне (Safari/Chrome), чтобы продолжить черновик.",
+        )
+        return
+
+    send_message(
+        chat_id,
+        "Помогу открыть анкету перед приёмом.\n"
+        f"Используйте ссылку врача или /help. Бот: @{BOT_USERNAME}",
+    )
 
 
 def ensure_polling_mode() -> None:

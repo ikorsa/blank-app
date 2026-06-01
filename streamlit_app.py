@@ -46,6 +46,14 @@ from anamnes_storage import (
 )
 
 import streamlit as st
+from patient_wizard import (
+    init_wizard_state,
+    render_intro,
+    render_nav,
+    render_progress_bar,
+    render_qr_page,
+    render_submission_success,
+)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -73,6 +81,7 @@ SMTP_TO = os.getenv("ANAMNES_SMTP_TO", "")
 PDF_FONT_NAME = "DejaVuSans"
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech")
 TELEGRAM_BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = os.getenv("ANAMNES_TELEGRAM_BOT_USERNAME", "ikorsakov_anamnes_bot").lstrip("@")
 TELEGRAM_CHAT_ID = os.getenv("ANAMNES_TELEGRAM_CHAT_ID", "")
 
 MAIN_REASONS = {
@@ -802,6 +811,44 @@ def render_branches(reasons: list[str], sex: str) -> dict[str, Any]:
     return branches
 
 
+def collect_common_from_session() -> dict[str, Any]:
+    chronic = st.session_state.get("common_chronic", [])
+    allergy_status = st.session_state.get("common_allergy_status", "Нет")
+    return {
+        "complaints": st.session_state.get("common_complaints", ""),
+        "complaints_started": st.session_state.get("common_complaints_started", ""),
+        "chronic_conditions": chronic,
+        "chronic_conditions_other": st.session_state.get("common_chronic_other", "")
+        if "Другое" in chronic
+        else "",
+        "surgeries": st.session_state.get("common_surgeries", ""),
+        "medications": st.session_state.get("common_medications_select", []),
+        "medications_details": st.session_state.get("common_medications_details", ""),
+        "allergy_status": allergy_status,
+        "allergies_details": st.session_state.get("common_allergies_details", "")
+        if allergy_status == "Да"
+        else "",
+        "family_history": st.session_state.get("common_family_history", []),
+        "blood_pressure": st.session_state.get("common_bp", ""),
+        "smoking": st.session_state.get("common_smoking", "Нет"),
+    }
+
+
+def collect_branch_from_session(reasons: list[str], sex: str) -> dict[str, Any]:
+    branches: dict[str, Any] = {}
+    for reason in reasons:
+        mapping = BRANCH_SESSION_KEYS.get(reason, {})
+        answers: dict[str, Any] = {}
+        for field, key in mapping.items():
+            if field == "hormonal_meds" and reason == "hormones":
+                key = "hormones_meds_male" if sex == "Мужской" else "hormones_meds"
+            if key in st.session_state:
+                answers[field] = st.session_state[key]
+        if answers:
+            branches[reason] = answers
+    return branches
+
+
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
     assigned_doctor = submission.get("assigned_doctor", {})
@@ -1299,12 +1346,30 @@ def build_patient_form_payload(
     }
 
 
+def reset_patient_wizard() -> None:
+    for key in list(st.session_state.keys()):
+        if key.startswith(("patient_", "common_", "thyroid_", "diabetes_", "weight_", "hormones_", "fatigue_", "bone_", "other_", "urgent_", "main_", "wizard_", "consent", "uploaded_", "draft_")):
+            st.session_state.pop(key, None)
+    st.session_state.patient_wizard_step = 0
+    st.session_state.patient_submission_done = None
+
+
 def render_patient_form() -> None:
     st.title(APP_TITLE)
     st.caption("Предварительный сбор анамнеза перед консультацией эндокринолога")
     doctors = load_doctors()
     active_draft_id = init_draft_from_query()
     assigned_doctor = resolve_patient_doctor(doctors)
+    init_wizard_state(skip_intro=bool(active_draft_id))
+
+    if done := st.session_state.get("patient_submission_done"):
+        render_submission_success(
+            done["id"],
+            doctor_display_name(assigned_doctor),
+            on_new=reset_patient_wizard,
+        )
+        return
+
     st.info(f"Анкета будет отправлена врачу: {doctor_display_name(assigned_doctor)}")
 
     if autosave_notice := st.session_state.pop("draft_autosave_notice", None):
@@ -1312,178 +1377,238 @@ def render_patient_form() -> None:
     if active_draft_id:
         draft_meta = load_draft(active_draft_id) or {}
         updated = draft_meta.get("updated_at", "")
-        st.success(
-            f"Загружен черновик. Последнее сохранение (UTC): {updated}. "
-            f"Можно продолжить заполнение и отправить врачу, когда будете готовы."
-        )
+        st.success(f"Загружен черновик (сохранён {updated}). Продолжите с того шага, где остановились.")
         resume = draft_resume_url(assigned_doctor["id"], active_draft_id)
-        st.text_input("Ссылка для продолжения на этом или другом устройстве", value=resume, disabled=True)
+        with st.expander("Ссылка для продолжения на другом устройстве"):
+            st.code(resume, language=None)
+            st.caption("Сохраните в «Избранное» или перешлите себе в Telegram. Без ссылки продолжить нельзя.")
 
-    with st.expander("Что важно знать перед заполнением", expanded=True):
-        st.write(
-            "Анкета не ставит диагноз и не назначает лечение. "
-            "Ответы нужны врачу для подготовки к приему. "
-            "При острых симптомах обратитесь за срочной медицинской помощью."
-        )
+    step = int(st.session_state.patient_wizard_step)
 
-    st.subheader("Базовые данные")
-    col1, col2 = st.columns(2)
-    with col1:
-        full_name = st.text_input("ФИО", key="patient_full_name")
-        age = st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
-        sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
-        phone = st.text_input("Телефон для связи", key="patient_phone")
-    with col2:
-        city = st.text_input("Город", key="patient_city")
-        height_cm = st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
-        weight_kg = st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
-    reproductive_status = "Не применимо"
-    if sex == "Женский":
-        reproductive_status = st.selectbox(
-            "Беременность / лактация",
-            ["Нет", "Беременность", "Лактация", "Планирую беременность", "Менопауза", "Не знаю"],
-            key="patient_reproductive_status",
-        )
+    if step == 0:
 
-    st.subheader("Срочные симптомы")
-    urgent_symptoms = st.multiselect(
-        "Есть ли сейчас что-то из перечисленного?",
-        URGENT_SYMPTOMS,
-        key="urgent_symptoms",
-    )
-    selected_urgent_symptoms = [item for item in urgent_symptoms if item != NO_URGENT_SYMPTOMS]
+        def _start_wizard() -> None:
+            st.session_state.patient_wizard_step = 1
+            st.rerun()
 
-    st.subheader("Причина обращения")
-    selected_reasons = st.multiselect(
-        "Что является причиной обращения? Можно выбрать несколько вариантов.",
-        list(MAIN_REASONS.keys()),
-        format_func=lambda reason: MAIN_REASONS[reason],
-        key="main_reasons",
-    )
-
-    common = render_common_questions()
-    branch = render_branches(selected_reasons, sex) if selected_reasons else {}
-
-    st.subheader("Файлы и комментарий")
-    draft_files: list[dict[str, Any]] = []
-    if active_draft_id:
-        draft_record = load_draft(active_draft_id) or {}
-        draft_files = draft_record.get("files", [])
-        render_draft_saved_files(active_draft_id, draft_files)
-    uploaded_files = st.file_uploader(
-        "Загрузите анализы, УЗИ, выписки, если есть (новые файлы добавятся к черновику)",
-        type=["pdf", "jpg", "jpeg", "png"],
-        accept_multiple_files=True,
-        key="uploaded_files",
-    )
-    additional_comment = st.text_area("Хотите добавить что-то важное для врача?", key="additional_comment")
-
-    form_payload = build_patient_form_payload(
-        assigned_doctor,
-        full_name,
-        int(age),
-        sex,
-        phone,
-        city,
-        int(height_cm),
-        float(weight_kg),
-        reproductive_status,
-        selected_reasons,
-        selected_urgent_symptoms,
-        urgent_symptoms,
-        common,
-        branch,
-        additional_comment,
-    )
-    preview_submission = {**form_payload, "id": "preview", "status": "submitted"}
-
-    with st.expander("Предпросмотр резюме перед отправкой", expanded=False):
-        st.text(build_summary(preview_submission))
-
-    st.subheader("Черновик")
-    st.caption(
-        f"Черновик хранится на сервере до {DRAFT_RETENTION_DAYS} дней. "
-        f"Автосохранение каждые {AUTOSAVE_INTERVAL_SECONDS // 60} мин., если открыта ссылка с черновиком. "
-        "Врач увидит анкету только после кнопки «Отправить»."
-    )
-    save_draft_clicked = st.button("Сохранить черновик и получить ссылку", type="secondary")
-    if save_draft_clicked:
-        draft_id = save_draft(form_payload, uploaded_files or [], draft_id=active_draft_id)
-        st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
-        link = draft_resume_url(assigned_doctor["id"], draft_id)
-        st.success("Черновик сохранён. Сохраните ссылку или отправьте её себе в Telegram.")
-        st.text_input("Ссылка для продолжения", value=link, disabled=True)
-        active_draft_id = draft_id
-
-    st.subheader("Согласие и отправка")
-    consent = st.checkbox(
-        "Я согласен/согласна на обработку и передачу врачу введенных персональных и медицинских данных.",
-        key="consent",
-    )
-    submitted = st.button("Отправить анкету врачу", type="primary")
-
-    if selected_urgent_symptoms:
-        st.error(
-            "Вы отметили потенциально срочные симптомы. Анкета не предназначена для экстренных ситуаций: "
-            "обратитесь за срочной медицинской помощью или вызовите скорую."
-        )
-
-    if not submitted:
-        maybe_autosave_draft(form_payload, uploaded_files or [], active_draft_id)
+        render_intro(doctor_display_name(assigned_doctor), on_start=_start_wizard)
         return
 
-    errors = []
-    if not consent:
-        errors.append("Нужно подтвердить согласие на обработку данных.")
-    if not full_name.strip():
-        errors.append("Укажите ФИО.")
-    if not phone.strip():
-        errors.append("Укажите телефон для связи.")
-    if age <= 0:
-        errors.append("Укажите возраст.")
-    if not selected_reasons:
-        errors.append("Выберите хотя бы одну причину обращения.")
+    render_progress_bar(step)
 
-    if errors:
-        for error in errors:
-            st.error(error)
-        return
+    if step == 1:
+        st.subheader("Шаг 1. О вас")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("ФИО", key="patient_full_name")
+            st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
+            sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
+            st.text_input("Телефон для связи", key="patient_phone", placeholder="+7 ...")
+        with col2:
+            st.text_input("Город", key="patient_city")
+            st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
+            st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
+        if st.session_state.get("patient_sex") == "Женский":
+            st.selectbox(
+                "Беременность / лактация",
+                ["Нет", "Беременность", "Лактация", "Планирую беременность", "Менопауза", "Не знаю"],
+                key="patient_reproductive_status",
+            )
+        st.subheader("Срочные симптомы")
+        st.multiselect("Есть ли сейчас что-то из перечисленного?", URGENT_SYMPTOMS, key="urgent_symptoms")
+        st.caption("При острых симптомах — скорая помощь, не эта анкета.")
+        back, nxt = render_nav(back=False)
+        if nxt:
+            st.session_state.patient_wizard_step = 2
+            st.rerun()
 
-    draft_id = st.session_state.get("active_draft_id")
-    draft_copy_files: list[dict[str, Any]] = []
-    if draft_id:
-        draft_record = load_draft(draft_id) or {}
-        remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
-        draft_copy_files = [
-            item
-            for item in draft_record.get("files", [])
-            if item.get("stored_name") not in remove_stored
-        ]
+    elif step == 2:
+        st.subheader("Шаг 2. Причина обращения")
+        prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        st.multiselect(
+            "Что является причиной обращения? Можно выбрать несколько.",
+            list(MAIN_REASONS.keys()),
+            format_func=lambda reason: MAIN_REASONS[reason],
+            key="main_reasons",
+        )
+        selected = st.session_state.get("main_reasons") or []
+        if prev_reasons and set(prev_reasons) != set(selected):
+            st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
+        back, nxt = render_nav()
+        if back:
+            st.session_state.patient_wizard_step = 1
+            st.rerun()
+        if nxt:
+            if not selected:
+                st.error("Выберите хотя бы одну причину обращения.")
+            else:
+                st.session_state.wizard_main_reasons_snapshot = list(selected)
+                st.session_state.patient_wizard_step = 3
+                st.rerun()
 
-    submission = {**preview_submission, "id": str(uuid.uuid4()), "created_at": now_iso(), "status": "submitted", "files": []}
-    submission_id = save_submission(submission, uploaded_files or [], copy_files=draft_copy_files)
-    if draft_id:
-        delete_draft(draft_id)
-        st.session_state.pop("active_draft_id", None)
-        st.session_state.pop(f"draft_applied_{draft_id}", None)
-    st.success("Анкета отправлена врачу.")
-    st.info(f"Номер анкеты: {submission_id}")
-    try:
-        email_sent, email_message = send_submission_email(submission)
-        if email_sent:
-            st.success(email_message)
+    elif step == 3:
+        st.subheader("Шаг 3. Анамнез")
+        sex = st.session_state.get("patient_sex", "Женский")
+        selected_reasons = st.session_state.get("main_reasons") or []
+        render_common_questions()
+        if selected_reasons:
+            render_branches(selected_reasons, sex)
         else:
-            st.warning(email_message)
-    except Exception as exc:
-        st.warning(f"Анкета сохранена, но email-копию отправить не удалось: {exc}")
-    try:
-        telegram_sent, telegram_message = send_telegram_notification(submission)
-        if telegram_sent:
-            st.success(telegram_message)
-    except Exception as exc:
-        st.warning(f"Анкета сохранена, но Telegram-уведомление отправить не удалось: {exc}")
-    with st.expander("Предварительное резюме", expanded=True):
-        st.text(submission["summary"])
+            st.info("Вернитесь на шаг 2 и выберите причину обращения.")
+        back, nxt = render_nav()
+        if back:
+            st.session_state.patient_wizard_step = 2
+            st.rerun()
+        if nxt:
+            if not selected_reasons:
+                st.error("Выберите причину обращения на шаге 2.")
+            else:
+                st.session_state.patient_wizard_step = 4
+                st.rerun()
+
+    elif step == 4:
+        st.subheader("Шаг 4. Файлы и комментарий")
+        if active_draft_id:
+            draft_record = load_draft(active_draft_id) or {}
+            render_draft_saved_files(active_draft_id, draft_record.get("files", []))
+        st.file_uploader(
+            "Загрузите анализы, УЗИ, выписки (PDF, JPG, PNG). Можно сфотографировать выписку.",
+            type=["pdf", "jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            key="uploaded_files",
+            help="Файлы сохраняются в черновике. До 25 МБ на файл.",
+        )
+        st.text_area("Дополнительный комментарий для врача", key="additional_comment")
+        back, nxt = render_nav()
+        if back:
+            st.session_state.patient_wizard_step = 3
+            st.rerun()
+        if nxt:
+            st.session_state.patient_wizard_step = 5
+            st.rerun()
+
+    elif step == 5:
+        st.subheader("Шаг 5. Проверка и отправка")
+        full_name = str(st.session_state.get("patient_full_name", ""))
+        age = int(st.session_state.get("patient_age") or 0)
+        sex = str(st.session_state.get("patient_sex", "Женский"))
+        phone = str(st.session_state.get("patient_phone", ""))
+        city = str(st.session_state.get("patient_city", ""))
+        height_cm = int(st.session_state.get("patient_height") or 0)
+        weight_kg = float(st.session_state.get("patient_weight") or 0.0)
+        reproductive_status = (
+            st.session_state.get("patient_reproductive_status", "Нет")
+            if sex == "Женский"
+            else "Не применимо"
+        )
+        urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
+        selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
+        selected_reasons = st.session_state.get("main_reasons") or []
+        common = collect_common_from_session()
+        branch = collect_branch_from_session(selected_reasons, sex)
+        additional_comment = str(st.session_state.get("additional_comment", ""))
+        uploaded_files = st.session_state.get("uploaded_files") or []
+
+        form_payload = build_patient_form_payload(
+            assigned_doctor,
+            full_name,
+            age,
+            sex,
+            phone,
+            city,
+            height_cm,
+            weight_kg,
+            reproductive_status,
+            selected_reasons,
+            selected_urgent,
+            urgent_symptoms,
+            common,
+            branch,
+            additional_comment,
+        )
+        preview = {**form_payload, "id": "preview", "status": "submitted"}
+
+        if selected_urgent:
+            st.error("Отмечены срочные симптомы — обратитесь за неотложной помощью, не только через анкету.")
+
+        with st.expander("Предпросмотр для врача", expanded=False):
+            st.text(build_summary(preview))
+
+        st.subheader("Черновик")
+        st.caption(
+            f"Хранится до {DRAFT_RETENTION_DAYS} дн. Автосохранение каждые {AUTOSAVE_INTERVAL_SECONDS // 60} мин. "
+            "при открытой ссылке с ?draft=..."
+        )
+        if st.button("Сохранить черновик и получить ссылку", type="secondary", use_container_width=True):
+            draft_id = save_draft(form_payload, uploaded_files, draft_id=active_draft_id)
+            st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+            link = draft_resume_url(assigned_doctor["id"], draft_id)
+            st.success("Черновик сохранён.")
+            st.markdown(
+                "**Сохраните ссылку** — перешлите себе в Telegram или «Избранное». "
+                "Без неё продолжить на другом устройстве нельзя."
+            )
+            st.code(link, language=None)
+
+        consent = st.checkbox(
+            "Я согласен/согласна на обработку и передачу врачу персональных и медицинских данных.",
+            key="consent",
+        )
+        back, submit = render_nav(next_label="Отправить врачу →")
+        if back:
+            st.session_state.patient_wizard_step = 4
+            st.rerun()
+
+        maybe_autosave_draft(form_payload, uploaded_files, active_draft_id)
+
+        if submit:
+            errors = []
+            if not consent:
+                errors.append("Подтвердите согласие на обработку данных.")
+            if not full_name.strip():
+                errors.append("Укажите ФИО.")
+            if not phone.strip():
+                errors.append("Укажите телефон.")
+            if age <= 0:
+                errors.append("Укажите возраст.")
+            if not selected_reasons:
+                errors.append("Выберите причину обращения на шаге 2.")
+            for error in errors:
+                st.error(error)
+            if not errors:
+                draft_id = st.session_state.get("active_draft_id")
+                draft_copy: list[dict[str, Any]] = []
+                if draft_id:
+                    draft_record = load_draft(draft_id) or {}
+                    remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
+                    draft_copy = [
+                        f for f in draft_record.get("files", []) if f.get("stored_name") not in remove_stored
+                    ]
+                submission = {
+                    **preview,
+                    "id": str(uuid.uuid4()),
+                    "created_at": now_iso(),
+                    "status": "submitted",
+                    "files": [],
+                }
+                submission_id = save_submission(submission, uploaded_files, copy_files=draft_copy)
+                if draft_id:
+                    delete_draft(draft_id)
+                    st.session_state.pop("active_draft_id", None)
+                    st.session_state.pop(f"draft_applied_{draft_id}", None)
+                try:
+                    send_submission_email(submission)
+                except Exception as exc:
+                    st.warning(f"Email не отправлен: {exc}")
+                try:
+                    send_telegram_notification(submission)
+                except Exception:
+                    pass
+                st.session_state.patient_submission_done = {
+                    "id": submission_id,
+                    "summary": submission.get("summary", ""),
+                }
+                st.rerun()
 
 
 def render_doctor_dashboard() -> None:
@@ -1793,12 +1918,12 @@ def render_admin_panel() -> None:
                 st.rerun()
 
     st.subheader("Ссылки для пациентов")
-    st.text_input("Веб-анкета", value=f"{PUBLIC_URL.rstrip('/')}/?doctor={selected_id}", disabled=True)
-    st.text_input(
-        "Telegram-бот",
-        value=f"https://t.me/ikorsakov_anamnes_bot?start=doctor_{selected_id}",
-        disabled=True,
-    )
+    web_link = f"{PUBLIC_URL.rstrip('/')}/?doctor={selected_id}"
+    bot_link = f"https://t.me/{TELEGRAM_BOT_USERNAME}?start=doctor_{selected_id}"
+    qr_link = f"{PUBLIC_URL.rstrip('/')}/?page=qr&doctor={selected_id}"
+    st.text_input("Веб-анкета", value=web_link, disabled=True)
+    st.text_input("Telegram-бот", value=bot_link, disabled=True)
+    st.markdown(f"[Страница QR для печати]({qr_link})")
 
     if use_postgres():
         st.download_button(
@@ -1812,6 +1937,13 @@ def render_admin_panel() -> None:
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="🩺", layout="wide")
     init_storage()
+
+    if get_query_param("page") == "qr":
+        doctors = load_doctors()
+        doctor_id = get_query_param("doctor").strip().lower()
+        doctor = get_doctor_by_id(doctors, doctor_id) if doctor_id else None
+        render_qr_page(doctor, TELEGRAM_BOT_USERNAME, PUBLIC_URL)
+        return
 
     with st.sidebar:
         st.header(APP_TITLE)
