@@ -14,12 +14,38 @@ SUBMISSIONS_DIR = DATA_DIR / "submissions"
 DRAFTS_DIR = DATA_DIR / "drafts"
 DRAFT_UPLOADS_DIR = DATA_DIR / "draft_uploads"
 DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
-DATABASE_URL = os.getenv("ANAMNES_DATABASE_URL", "").strip()
 DRAFT_RETENTION_DAYS = int(os.getenv("ANAMNES_DRAFT_RETENTION_DAYS", "30"))
 
 
+def _load_env_files() -> None:
+    root = Path(__file__).resolve().parent
+    for env_path in (
+        root / ".env",
+        root / "config" / "database.env",
+        Path(os.getenv("ANAMNES_DATA_DIR", str(root / "data"))).parent / "config" / "database.env",
+    ):
+        if not env_path.exists():
+            continue
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+_load_env_files()
+
+
+def get_database_url() -> str:
+    return os.getenv("ANAMNES_DATABASE_URL", "").strip()
+
+
 def use_postgres() -> bool:
-    return bool(DATABASE_URL)
+    return bool(get_database_url())
 
 
 def safe_filename(name: str) -> str:
@@ -74,7 +100,7 @@ def _pg_connect():
     import psycopg
     from psycopg.rows import dict_row
 
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+    return psycopg.connect(get_database_url(), row_factory=dict_row)
 
 
 def init_postgres_schema() -> None:
