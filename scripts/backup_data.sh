@@ -19,3 +19,8 @@ tar -czf "$archive" -C "$(dirname "$DATA_DIR")" "$(basename "$DATA_DIR")"
 find "$BACKUP_DIR" -name 'anamnes-data-*.tar.gz' -type f -mtime +"$RETENTION_DAYS" -delete
 
 echo "Created backup: $archive"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/backup_postgres.sh" ]]; then
+  "$SCRIPT_DIR/backup_postgres.sh"
+fi

@@ -91,6 +91,13 @@ def make_qr_image(url: str) -> bytes:
     return buffer.getvalue()
 
 
+def patient_web_url(public_url: str, doctor_id: str, *, short: bool = True) -> str:
+    base = public_url.rstrip("/")
+    if short:
+        return f"{base}/d/{doctor_id}"
+    return f"{base}/?doctor={doctor_id}"
+
+
 def render_qr_page(
     doctor: dict[str, str] | None,
     bot_username: str,
@@ -101,7 +108,7 @@ def render_qr_page(
         st.warning("Укажите врача в ссылке: ?page=qr&doctor=ivanova")
         return
 
-    web_url = f"{public_url.rstrip('/')}/?doctor={doctor['id']}"
+    web_url = patient_web_url(public_url, doctor["id"])
     bot_url = f"https://t.me/{bot_username.lstrip('@')}?start=doctor_{doctor['id']}"
 
     st.info(f"**{doctor.get('name', doctor['id'])}** — распечатайте или покажите на планшете в регистратуре.")

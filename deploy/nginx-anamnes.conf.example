@@ -17,6 +17,11 @@ server {
 
     client_max_body_size 30M;
 
+    # Short patient links: https://anamnes.example.com/d/ivanova -> ?doctor=ivanova
+    location ~ ^/d/([a-z0-9_-]+)/?$ {
+        return 302 $scheme://$host/?doctor=$1;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:9090;
         proxy_http_version 1.1;

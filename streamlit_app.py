@@ -1,16 +1,13 @@
 import json
 import os
 import re
-import smtplib
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import urlopen
 
 
 def _load_local_env() -> None:
@@ -46,8 +43,15 @@ from anamnes_storage import (
 )
 
 import streamlit as st
+from doctor_notifications import (
+    notification_status_lines,
+    notify_doctor_on_submission,
+    send_test_notifications,
+)
 from patient_wizard import (
     init_wizard_state,
+    make_qr_image,
+    patient_web_url,
     render_intro,
     render_nav,
     render_progress_bar,
@@ -72,17 +76,9 @@ DRAFT_RETENTION_DAYS = int(os.getenv("ANAMNES_DRAFT_RETENTION_DAYS", "30"))
 AUTOSAVE_INTERVAL_SECONDS = int(os.getenv("ANAMNES_AUTOSAVE_INTERVAL_SECONDS", "150"))
 DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
 ADMIN_PASSWORD = os.getenv("ANAMNES_ADMIN_PASSWORD", "admin")
-SMTP_HOST = os.getenv("ANAMNES_SMTP_HOST", "")
-SMTP_PORT = int(os.getenv("ANAMNES_SMTP_PORT", "587"))
-SMTP_USER = os.getenv("ANAMNES_SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("ANAMNES_SMTP_PASSWORD", "")
-SMTP_FROM = os.getenv("ANAMNES_SMTP_FROM", SMTP_USER)
-SMTP_TO = os.getenv("ANAMNES_SMTP_TO", "")
 PDF_FONT_NAME = "DejaVuSans"
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech")
-TELEGRAM_BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("ANAMNES_TELEGRAM_BOT_USERNAME", "ikorsakov_anamnes_bot").lstrip("@")
-TELEGRAM_CHAT_ID = os.getenv("ANAMNES_TELEGRAM_CHAT_ID", "")
 
 MAIN_REASONS = {
     "thyroid": "Щитовидная железа",
@@ -1186,79 +1182,6 @@ def save_submission(
     return submission_id
 
 
-def email_notifications_configured() -> bool:
-    return all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_TO])
-
-
-def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
-    recipient = submission.get("assigned_doctor", {}).get("email") or SMTP_TO
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, recipient]):
-        return False, "Email не настроен: задайте SMTP-переменные окружения."
-
-    patient = submission["patient"]
-    reason = format_submission_reasons(submission)
-    subject = f"Новая анкета эндокринолога: {patient.get('full_name', 'без имени')}"
-    body = (
-        "Получена новая анкета пациента.\n\n"
-        f"Пациент: {format_answer(patient.get('full_name'))}\n"
-        f"Телефон: {format_answer(patient.get('phone'))}\n"
-        f"Причина обращения: {reason}\n"
-        f"ID анкеты: {submission['id']}\n"
-        f"Дата UTC: {submission['created_at']}\n\n"
-        "Резюме:\n"
-        f"{submission.get('summary', '')}\n\n"
-        "Загруженные пациентом файлы не прикладываются к письму; они доступны в кабинете врача."
-    )
-
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = SMTP_FROM
-    message["To"] = recipient
-    message.set_content(body)
-    message.add_attachment(
-        json.dumps(submission, ensure_ascii=False, indent=2).encode("utf-8"),
-        maintype="application",
-        subtype="json",
-        filename=f"submission_{submission['id']}.json",
-    )
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-        smtp.starttls()
-        smtp.login(SMTP_USER, SMTP_PASSWORD)
-        smtp.send_message(message)
-
-    return True, f"Копия анкеты отправлена на {recipient}."
-
-
-def telegram_notifications_configured() -> bool:
-    return bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
-
-
-def send_telegram_notification(submission: dict[str, Any]) -> tuple[bool, str]:
-    chat_id = submission.get("assigned_doctor", {}).get("telegram_chat_id") or TELEGRAM_CHAT_ID
-    if not (TELEGRAM_BOT_TOKEN and chat_id):
-        return False, "Telegram-уведомление не настроено."
-
-    patient = submission["patient"]
-    reason = format_submission_reasons(submission)
-    text = "\n".join(
-        [
-            "Новая анкета эндокринолога",
-            f"Пациент: {format_answer(patient.get('full_name'))}",
-            f"Телефон: {format_answer(patient.get('phone'))}",
-            f"Причина: {reason}",
-            f"ID: {submission['id']}",
-            f"Открыть кабинет: {PUBLIC_URL}",
-        ]
-    )
-    payload = urlencode({"chat_id": chat_id, "text": text})
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?{payload}"
-    with urlopen(url, timeout=15) as response:
-        if response.status != 200:
-            return False, f"Telegram вернул HTTP {response.status}."
-    return True, "Telegram-уведомление отправлено."
-
-
 def get_submission_doctor_id(submission: dict[str, Any]) -> str:
     return str(submission.get("assigned_doctor", {}).get("id") or "")
 
@@ -1363,6 +1286,10 @@ def render_patient_form() -> None:
     init_wizard_state(skip_intro=bool(active_draft_id))
 
     if done := st.session_state.get("patient_submission_done"):
+        for message in st.session_state.pop("submission_notify_ok", []):
+            st.success(message)
+        for message in st.session_state.pop("submission_notify_warn", []):
+            st.caption(message)
         render_submission_success(
             done["id"],
             doctor_display_name(assigned_doctor),
@@ -1596,14 +1523,11 @@ def render_patient_form() -> None:
                     delete_draft(draft_id)
                     st.session_state.pop("active_draft_id", None)
                     st.session_state.pop(f"draft_applied_{draft_id}", None)
-                try:
-                    send_submission_email(submission)
-                except Exception as exc:
-                    st.warning(f"Email не отправлен: {exc}")
-                try:
-                    send_telegram_notification(submission)
-                except Exception:
-                    pass
+                for ok, message in notify_doctor_on_submission(submission):
+                    if ok:
+                        st.session_state.setdefault("submission_notify_ok", []).append(message)
+                    else:
+                        st.session_state.setdefault("submission_notify_warn", []).append(message)
                 st.session_state.patient_submission_done = {
                     "id": submission_id,
                     "summary": submission.get("summary", ""),
@@ -1918,12 +1842,48 @@ def render_admin_panel() -> None:
                 st.rerun()
 
     st.subheader("Ссылки для пациентов")
-    web_link = f"{PUBLIC_URL.rstrip('/')}/?doctor={selected_id}"
+    web_link = patient_web_url(PUBLIC_URL, selected_id)
+    web_long = patient_web_url(PUBLIC_URL, selected_id, short=False)
     bot_link = f"https://t.me/{TELEGRAM_BOT_USERNAME}?start=doctor_{selected_id}"
     qr_link = f"{PUBLIC_URL.rstrip('/')}/?page=qr&doctor={selected_id}"
-    st.text_input("Веб-анкета", value=web_link, disabled=True)
+    st.text_input("Короткая ссылка (для QR и визитки)", value=web_link, disabled=True)
+    st.text_input("Полная ссылка", value=web_long, disabled=True)
     st.text_input("Telegram-бот", value=bot_link, disabled=True)
     st.markdown(f"[Страница QR для печати]({qr_link})")
+    st.caption("Короткая ссылка `/d/код` работает после настройки Nginx (см. deploy/nginx-anamnes.conf.example).")
+
+    st.subheader("QR-коды")
+    qr_col1, qr_col2 = st.columns(2)
+    with qr_col1:
+        st.markdown("**Telegram (рекомендуется)**")
+        st.image(make_qr_image(bot_link), width=200)
+        st.download_button(
+            "Скачать PNG (бот)",
+            make_qr_image(bot_link),
+            f"qr-bot-{selected_id}.png",
+            "image/png",
+            key=f"admin_qr_bot_{selected_id}",
+        )
+    with qr_col2:
+        st.markdown("**Сайт**")
+        st.image(make_qr_image(web_link), width=200)
+        st.download_button(
+            "Скачать PNG (сайт)",
+            make_qr_image(web_link),
+            f"qr-web-{selected_id}.png",
+            "image/png",
+            key=f"admin_qr_web_{selected_id}",
+        )
+
+    st.subheader("Уведомления врачу")
+    for line in notification_status_lines(selected):
+        st.markdown(line)
+    if st.button("Отправить тестовое уведомление", key=f"test_notify_{selected_id}"):
+        for ok, message in send_test_notifications(selected):
+            if ok:
+                st.success(message)
+            else:
+                st.warning(message)
 
     if use_postgres():
         st.download_button(

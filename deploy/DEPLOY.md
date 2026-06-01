@@ -89,7 +89,26 @@ sudo systemctl restart anamnes anamnes-bot
 
 ## 8. Бэкапы
 
-См. `scripts/backup_data.sh` и cron в README.
+- Файлы и JSON: `scripts/backup_data.sh` (cron в README).
+- PostgreSQL: тот же cron вызывает `scripts/backup_postgres.sh`, если задан `ANAMNES_DATABASE_URL` (дампы `anamnes-pg-*.dump` в `/opt/anamnes/backups/`).
+- Восстановление БД: `scripts/restore_postgres.sh /opt/anamnes/backups/anamnes-pg-....dump` (осторожно: перезаписывает данные).
+
+```bash
+sudo apt install -y postgresql-client
+chmod +x /opt/anamnes/scripts/backup_postgres.sh /opt/anamnes/scripts/restore_postgres.sh
+```
+
+## 8.1. Короткие ссылки и QR
+
+После обновления Nginx (`deploy/nginx-anamnes.conf.example`, блок `/d/...`):
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Пациентская ссылка: `https://anamnes.ikorsakov.tech/d/ivanova` → анкета врача `ivanova`.
+
+В **Управление врачами**: скачивание QR PNG и кнопка «Отправить тестовое уведомление».
 
 ## 9. PostgreSQL (опционально)
 

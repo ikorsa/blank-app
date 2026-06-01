@@ -61,9 +61,11 @@ admin
 Для каждого врача можно завести отдельную ссылку пациента:
 
 ```text
-https://anamnes.ikorsakov.tech/?doctor=ivanova
-https://anamnes.ikorsakov.tech/?doctor=petrov
+https://anamnes.ikorsakov.tech/d/ivanova
+https://anamnes.ikorsakov.tech/d/petrov
 ```
+
+(короткий путь `/d/...` требует блока в Nginx, см. `deploy/nginx-anamnes.conf.example`; полная ссылка `/?doctor=ivanova` работает всегда.)
 
 Пациентская анкета будет автоматически привязана к врачу из параметра `doctor`.
 В кабинете врач входит своим логином и паролем и видит только свои анкеты.
@@ -133,7 +135,7 @@ export ANAMNES_TELEGRAM_BOT_TOKEN="123456:telegram-token"
 export ANAMNES_TELEGRAM_CHAT_ID="123456789"
 ```
 
-Если переменные не заданы, приложение просто не отправляет Telegram-уведомления.
+Если переменные не заданы, приложение просто не отправляет Telegram-уведомления. Если `ANAMNES_TELEGRAM_BOT_TOKEN` пуст, для уведомлений используется токен пациентского бота (`ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN`) — врач должен написать боту `/start`, затем указать `telegram_chat_id` в карточке врача. В разделе **Управление врачами** есть проверка и «Отправить тестовое уведомление».
 
 ## Telegram-бот для пациентов
 
@@ -253,7 +255,7 @@ data/uploads/       загруженные файлы пациентов
 scripts/backup_data.sh
 ```
 
-Он архивирует `ANAMNES_DATA_DIR` в `ANAMNES_BACKUP_DIR` и удаляет копии старше `ANAMNES_BACKUP_RETENTION_DAYS`.
+Он архивирует `ANAMNES_DATA_DIR` в `ANAMNES_BACKUP_DIR` и удаляет копии старше `ANAMNES_BACKUP_RETENTION_DAYS`. Если задан `ANAMNES_DATABASE_URL`, дополнительно создаётся дамп PostgreSQL (`scripts/backup_postgres.sh`, файлы `anamnes-pg-*.dump`). Восстановление: `scripts/restore_postgres.sh <файл.dump>`.
 
 Пример ручного запуска на сервере:
 
