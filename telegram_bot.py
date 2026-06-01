@@ -7,6 +7,24 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
+def _load_local_env() -> None:
+    """Load KEY=value lines from .env in the project root (local dev on Windows)."""
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_local_env()
+
 DATA_DIR = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
 DOCTORS_FILE = Path(os.getenv("ANAMNES_DOCTORS_FILE", str(DATA_DIR / "doctors.json")))
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech").rstrip("/")
@@ -147,6 +165,14 @@ def handle_message(message: dict[str, Any]) -> None:
     send_message(chat_id, "Я помогу открыть анкету перед приемом. Используйте /help или персональную ссылку врача.")
 
 
+def ensure_polling_mode() -> None:
+    """Telegram allows only polling OR webhook per bot token (409 if both)."""
+    try:
+        api_request("deleteWebhook", {"drop_pending_updates": False})
+    except Exception as exc:
+        print(f"Warning: deleteWebhook failed: {exc}", flush=True)
+
+
 def poll_updates() -> None:
     offset = 0
     while True:
@@ -166,4 +192,6 @@ def poll_updates() -> None:
 if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("Set ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN before starting the bot.")
+    ensure_polling_mode()
+    print("Telegram patient bot: polling started.", flush=True)
     poll_updates()

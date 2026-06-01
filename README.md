@@ -28,6 +28,8 @@ streamlit run streamlit_app.py
 https://anamnes.ikorsakov.tech
 ```
 
+Пошаговый деплой (systemd, Nginx, `/etc/anamnes.env`): см. [deploy/DEPLOY.md](deploy/DEPLOY.md).
+
 После обновления кода на сервере:
 
 ```bash

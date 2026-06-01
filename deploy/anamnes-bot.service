@@ -1,0 +1,17 @@
+[Unit]
+Description=Anamnes Telegram patient bot
+After=network-online.target anamnes.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anamnes
+Group=anamnes
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/anamnes.env
+ExecStart=/opt/anamnes/.venv/bin/python /opt/anamnes/telegram_bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
