@@ -1579,8 +1579,11 @@ def render_patient_form() -> None:
             format_func=lambda reason: MAIN_REASONS[reason],
             key="main_reasons",
         )
-        if isinstance(st.session_state.get("main_reasons"), list):
-            st.session_state["wizard_main_reasons_snapshot"] = list(st.session_state.get("main_reasons") or [])
+        # Не затираем snapshot пустым списком на промежуточных rerun:
+        # иначе выбранная причина может потеряться при сохранении черновика.
+        current_reasons_after_render = st.session_state.get("main_reasons")
+        if isinstance(current_reasons_after_render, list) and current_reasons_after_render:
+            st.session_state["wizard_main_reasons_snapshot"] = list(current_reasons_after_render)
         selected = get_selected_reasons()
         if prev_reasons and set(prev_reasons) != set(selected):
             st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
