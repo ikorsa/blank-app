@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import MAIN_REASONS
+from .models import MAIN_REASONS, Submission
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -56,3 +56,24 @@ class Step3Form(forms.Form):
 class Step4Form(forms.Form):
     additional_comment = forms.CharField(label="Комментарий для врача", widget=forms.Textarea, required=False)
     files = MultipleFileField(label="Файлы (PDF/JPG/PNG)", required=False)
+
+
+class DoctorLoginForm(forms.Form):
+    login = forms.CharField(label="Логин врача или admin", max_length=64)
+    password = forms.CharField(label="Пароль", widget=forms.PasswordInput)
+
+
+class SubmissionDoctorForm(forms.ModelForm):
+    class Meta:
+        model = Submission
+        fields = ["status", "appointment_date", "requested_documents", "doctor_note"]
+        widgets = {
+            "doctor_note": forms.Textarea(attrs={"rows": 4}),
+            "requested_documents": forms.Textarea(attrs={"rows": 3}),
+        }
+        labels = {
+            "status": "Статус анкеты",
+            "appointment_date": "Дата приёма",
+            "requested_documents": "Что попросить донести",
+            "doctor_note": "Комментарий врача",
+        }

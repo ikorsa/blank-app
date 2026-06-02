@@ -22,6 +22,7 @@ class Command(BaseCommand):
             defaults = {
                 "name": str(item.get("name") or slug),
                 "specialty": str(item.get("specialty") or "Эндокринолог"),
+                "password": str(item.get("password") or ""),
                 "is_active": str(item.get("is_active", "true")).lower() not in {"false", "0", "no"},
             }
             _, was_created = Doctor.objects.update_or_create(slug=slug, defaults=defaults)

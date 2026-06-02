@@ -55,6 +55,11 @@ http://localhost:8000/
 python manage.py sync_doctors_from_legacy
 ```
 
+Кабинет врача (Django):
+- URL: `/doctor/login/`
+- врач: логин = slug (`ivanova`), пароль из `doctors.json`
+- админ: логин `admin`, пароль `ANAMNES_ADMIN_PASSWORD`
+
 По умолчанию приложение слушает порт `9090`. В продакшене его лучше запускать через `systemd` на `127.0.0.1:9090` и отдавать наружу через Nginx:
 
 ```text

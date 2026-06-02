@@ -18,6 +18,7 @@ class Doctor(models.Model):
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=255)
     specialty = models.CharField(max_length=255, default="Эндокринолог")
+    password = models.CharField(max_length=255, blank=True, default="")
     is_active = models.BooleanField(default=True)
 
     def __str__(self) -> str:
@@ -38,10 +39,23 @@ class Draft(models.Model):
         return f"Draft {self.id}"
 
 
+SUBMISSION_STATUSES = [
+    ("submitted", "Новая"),
+    ("in_progress", "В работе"),
+    ("viewed", "Просмотрена"),
+    ("closed", "Закрыта"),
+]
+
+
 class Submission(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     doctor = models.ForeignKey(Doctor, on_delete=models.SET_NULL, null=True, blank=True)
     data = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=SUBMISSION_STATUSES, default="submitted")
+    doctor_note = models.TextField(blank=True, default="")
+    requested_documents = models.TextField(blank=True, default="")
+    appointment_date = models.CharField(max_length=120, blank=True, default="")
+    viewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
