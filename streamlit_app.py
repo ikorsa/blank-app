@@ -890,6 +890,15 @@ def sync_patient_snapshot() -> None:
         st.session_state["wizard_patient_snapshot"] = snapshot
 
 
+def hydrate_patient_state_from_snapshot() -> None:
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    if not snapshot:
+        return
+    for field, value in snapshot.items():
+        if field not in st.session_state or _is_blank_value(st.session_state.get(field)):
+            st.session_state[field] = value
+
+
 def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[str, Any]:
     """
     Собирает payload анкеты из текущего session_state.
@@ -1420,6 +1429,7 @@ def render_patient_form() -> None:
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
     sync_patient_snapshot()
+    hydrate_patient_state_from_snapshot()
 
     sidebar_save_clicked = False
     with st.sidebar:
