@@ -1,0 +1,19 @@
+{% if wizard_step %}
+  <div class="wizard-progress" aria-label="Прогресс анкеты">
+    <div class="wizard-progress-meta">
+      <span>Шаг {{ wizard_step }} из {{ wizard_total }}</span>
+      <span class="wizard-progress-label">{{ wizard_step_label }}</span>
+    </div>
+    <div class="wizard-progress-track" role="progressbar" aria-valuenow="{{ wizard_step }}" aria-valuemin="1" aria-valuemax="{{ wizard_total }}">
+      <div class="wizard-progress-fill" style="width: {% widthratio wizard_step wizard_total 100 %}%;"></div>
+    </div>
+    <ol class="wizard-steps">
+      {% for step_num, step_label in wizard_steps %}
+        <li class="{% if step_num == wizard_step %}active{% elif step_num < wizard_step %}done{% endif %}">
+          <span class="wizard-step-num">{{ step_num }}</span>
+          <span class="wizard-step-text">{{ step_label }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+{% endif %}

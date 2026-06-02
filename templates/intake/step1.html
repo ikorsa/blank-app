@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Шаг 1 — Контакты{% endblock %}
+{% block content %}
+  {% include "intake/_wizard_progress.html" %}
+
+  <div class="doctor-banner">
+    <span class="doctor-banner-label">Анкета для врача</span>
+    <strong>{{ doctor.name|default:"Не выбран" }}</strong>
+    {% if doctor.specialty %}
+      <span class="muted">· {{ doctor.specialty }}</span>
+    {% endif %}
+  </div>
+
+  <h1>Контактные данные</h1>
+  <p class="muted">Нужны, чтобы врач мог связаться с вами и подготовиться к приёму. Поля со * обязательны.</p>
+  {% if draft %}
+    <p class="muted">Черновик: {{ draft.id }}</p>
+  {% endif %}
+
+  <form method="post" class="step-form" id="step1-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <ul class="errorlist">{{ form.non_field_errors }}</ul>
+    {% endif %}
+
+    <fieldset class="form-section">
+      <legend>Как с вами связаться</legend>
+      <div class="field">
+        <label for="{{ form.full_name.id_for_label }}">{{ form.full_name.label }} *</label>
+        {{ form.full_name }}
+        {{ form.full_name.errors }}
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }} *</label>
+          {{ form.phone }}
+          {{ form.phone.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ form.city.id_for_label }}">{{ form.city.label }} *</label>
+          {{ form.city }}
+          {{ form.city.errors }}
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Основное</legend>
+      <div class="grid-2">
+        <div class="field">
+          <label for="{{ form.age.id_for_label }}">{{ form.age.label }} *</label>
+          {{ form.age }}
+          {{ form.age.errors }}
+        </div>
+        <div class="field">
+          <span class="field-label">{{ form.sex.label }} *</span>
+          <div class="radio-row">{{ form.sex }}</div>
+          {{ form.sex.errors }}
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Рост и вес</legend>
+      <div class="grid-2">
+        <div class="field">
+          <label for="{{ form.height_cm.id_for_label }}">{{ form.height_cm.label }} *</label>
+          {{ form.height_cm }}
+          {{ form.height_cm.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ form.weight_kg.id_for_label }}">{{ form.weight_kg.label }} *</label>
+          {{ form.weight_kg }}
+          {{ form.weight_kg.errors }}
+        </div>
+      </div>
+      <p class="bmi-hint muted" id="bmi-hint">ИМТ будет рассчитан автоматически.</p>
+    </fieldset>
+
+    <fieldset class="form-section female-only" id="female-section">
+      <legend>Для женщин</legend>
+      <div class="field">
+        <label for="{{ form.reproductive_status.id_for_label }}">{{ form.reproductive_status.label }}</label>
+        {{ form.reproductive_status }}
+        {{ form.reproductive_status.errors }}
+      </div>
+    </fieldset>
+
+    <fieldset class="form-section urgent-panel">
+      <legend>Нужна ли сейчас скорая помощь?</legend>
+      <p class="muted urgent-note">Если ничего из списка — оставьте пустым и нажмите «Далее».</p>
+      <div class="checkbox-grid">{{ form.urgent_symptoms }}</div>
+      {{ form.urgent_symptoms.errors }}
+      <p class="urgent-warning">При острых симптомах звоните 103 / 112, а не ждите приёма.</p>
+    </fieldset>
+
+    <div class="actions">
+      <button class="primary" type="submit">Далее</button>
+      <button class="secondary" type="submit" name="save_draft" value="1">Сохранить черновик</button>
+    </div>
+  </form>
+
+  <script>
+    (function () {
+      const form = document.getElementById("step1-form");
+      if (!form) return;
+
+      const femaleSection = document.getElementById("female-section");
+      const heightInput = document.getElementById("id_height_cm");
+      const weightInput = document.getElementById("id_weight_kg");
+      const bmiHint = document.getElementById("bmi-hint");
+
+      function selectedSex() {
+        const checked = form.querySelector('input[name="sex"]:checked');
+        return checked ? checked.value : "";
+      }
+
+      function toggleFemaleSection() {
+        if (!femaleSection) return;
+        femaleSection.style.display = selectedSex() === "female" ? "" : "none";
+      }
+
+      function updateBmi() {
+        if (!bmiHint || !heightInput || !weightInput) return;
+        const height = parseFloat(heightInput.value);
+        const weight = parseFloat(weightInput.value);
+        if (!height || !weight) {
+          bmiHint.textContent = "ИМТ будет рассчитан автоматически.";
+          return;
+        }
+        const meters = height / 100;
+        const bmi = (weight / (meters * meters)).toFixed(1);
+        bmiHint.textContent = "ИМТ: " + bmi;
+      }
+
+      form.querySelectorAll('input[name="sex"]').forEach(function (input) {
+        input.addEventListener("change", toggleFemaleSection);
+      });
+      if (heightInput) heightInput.addEventListener("input", updateBmi);
+      if (weightInput) weightInput.addEventListener("input", updateBmi);
+
+      toggleFemaleSection();
+      updateBmi();
+    })();
+  </script>
+{% endblock %}

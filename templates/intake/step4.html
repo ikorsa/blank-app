@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Шаг 4 — Профильные блоки{% endblock %}
+{% block content %}
+  {% include "intake/_wizard_progress.html" %}
+  <h1>Профильные вопросы</h1>
+  <p class="muted">Ответьте по выбранным причинам обращения. Можно пропустить неизвестные поля.</p>
+  {% if urgent_labels %}
+    <div class="msg warning">
+      Отмечены срочные симптомы: {{ urgent_labels|join:", " }}.
+      При острых состояниях обратитесь за неотложной помощью.
+    </div>
+  {% endif %}
+  {% if draft %}
+    <p class="muted">Черновик: {{ draft.id }}</p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <ul class="errorlist">{{ form.non_field_errors }}</ul>
+    {% endif %}
+    {% for section in sections %}
+      <fieldset class="branch-section">
+        <legend>{{ section.label }}</legend>
+        {% for field in section.fields %}
+          <div class="field{% if field.widget_type == 'checkboxselectmultiple' %} choice-list{% endif %}">
+            {{ field.label_tag }}
+            {{ field }}
+            {{ field.errors }}
+          </div>
+        {% endfor %}
+      </fieldset>
+    {% endfor %}
+    <div class="actions">
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step3' %}{{ query_suffix }}">Назад</a>
+      <button class="primary" type="submit">Далее</button>
+      <button class="secondary" type="submit" name="save_draft" value="1">Сохранить черновик</button>
+    </div>
+  </form>
+{% endblock %}

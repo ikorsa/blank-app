@@ -846,14 +846,105 @@ def collect_branch_from_session(reasons: list[str], sex: str) -> dict[str, Any]:
 
 
 def get_selected_reasons() -> list[str]:
+    widget_current = st.session_state.get("main_reasons_widget")
+    if isinstance(widget_current, list) and widget_current:
+        st.session_state["main_reasons"] = list(widget_current)
+        st.session_state["wizard_main_reasons_persist"] = list(widget_current)
+        st.session_state["wizard_main_reasons_snapshot"] = list(widget_current)
+        return widget_current
+
     current = st.session_state.get("main_reasons")
     if isinstance(current, list) and current:
+        st.session_state["wizard_main_reasons_persist"] = list(current)
         st.session_state["wizard_main_reasons_snapshot"] = list(current)
         return current
+    persisted = st.session_state.get("wizard_main_reasons_persist")
+    if isinstance(persisted, list) and persisted:
+        return persisted
     snapshot = st.session_state.get("wizard_main_reasons_snapshot")
     if isinstance(snapshot, list) and snapshot:
         return snapshot
     return []
+
+
+def get_patient_field_value(field: str, default: Any = "") -> Any:
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    if field in st.session_state:
+        value = st.session_state.get(field)
+        snapshot[field] = value
+        st.session_state["wizard_patient_snapshot"] = snapshot
+        return value
+    if field in snapshot:
+        return snapshot[field]
+    return default
+
+
+def sync_patient_snapshot() -> None:
+    fields = (
+        "patient_full_name",
+        "patient_age",
+        "patient_sex",
+        "patient_phone",
+        "patient_city",
+        "patient_height",
+        "patient_weight",
+        "patient_reproductive_status",
+        "urgent_symptoms",
+    )
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    changed = False
+    for field in fields:
+        if field in st.session_state:
+            snapshot[field] = st.session_state[field]
+            changed = True
+    if changed:
+        st.session_state["wizard_patient_snapshot"] = snapshot
+
+
+def resolve_selected_reasons_for_save() -> list[str]:
+    reasons = get_selected_reasons()
+    if reasons:
+        return reasons
+    persisted = st.session_state.get("wizard_main_reasons_persist")
+    if isinstance(persisted, list) and persisted:
+        return persisted
+    active_draft_id = st.session_state.get("active_draft_id")
+    if active_draft_id:
+        existing = load_draft(str(active_draft_id)) or {}
+        existing_reasons = existing.get("main_reasons")
+        if isinstance(existing_reasons, list) and existing_reasons:
+            st.session_state["wizard_main_reasons_snapshot"] = list(existing_reasons)
+            return existing_reasons
+    inferred_reasons: list[str] = []
+    for reason, mapping in BRANCH_SESSION_KEYS.items():
+        if reason == "other":
+            continue
+        for key in mapping.values():
+            if key in st.session_state and not _is_blank_value(st.session_state.get(key)):
+                inferred_reasons.append(reason)
+                break
+    if inferred_reasons:
+        st.session_state["wizard_main_reasons_snapshot"] = inferred_reasons
+        return inferred_reasons
+    return []
+
+
+def on_main_reasons_change() -> None:
+    current = st.session_state.get("main_reasons_widget")
+    if isinstance(current, list):
+        st.session_state["main_reasons"] = list(current)
+        st.session_state["wizard_main_reasons_persist"] = list(current)
+        if current:
+            st.session_state["wizard_main_reasons_snapshot"] = list(current)
+
+
+def hydrate_patient_state_from_snapshot() -> None:
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    if not snapshot:
+        return
+    for field, value in snapshot.items():
+        if field not in st.session_state or _is_blank_value(st.session_state.get(field)):
+            st.session_state[field] = value
 
 
 def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[str, Any]:
@@ -861,22 +952,22 @@ def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[
     Собирает payload анкеты из текущего session_state.
     Используется для кнопки сохранения черновика с любого шага.
     """
-    full_name = str(st.session_state.get("patient_full_name", ""))
-    age = int(st.session_state.get("patient_age") or 0)
-    sex = str(st.session_state.get("patient_sex", "Женский"))
-    phone = str(st.session_state.get("patient_phone", ""))
-    city = str(st.session_state.get("patient_city", ""))
-    height_cm = int(st.session_state.get("patient_height") or 0)
-    weight_kg = float(st.session_state.get("patient_weight") or 0.0)
+    full_name = str(get_patient_field_value("patient_full_name", ""))
+    age = int(get_patient_field_value("patient_age", 0) or 0)
+    sex = str(get_patient_field_value("patient_sex", "Женский"))
+    phone = str(get_patient_field_value("patient_phone", ""))
+    city = str(get_patient_field_value("patient_city", ""))
+    height_cm = int(get_patient_field_value("patient_height", 0) or 0)
+    weight_kg = float(get_patient_field_value("patient_weight", 0.0) or 0.0)
 
     reproductive_status = (
-        st.session_state.get("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
+        get_patient_field_value("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
     )
 
-    urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
+    urgent_symptoms = get_patient_field_value("urgent_symptoms", [NO_URGENT_SYMPTOMS]) or [NO_URGENT_SYMPTOMS]
     selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
 
-    selected_reasons = get_selected_reasons()
+    selected_reasons = resolve_selected_reasons_for_save()
     common = collect_common_from_session()
     branch = collect_branch_from_session(selected_reasons, sex)
 
@@ -1014,8 +1105,23 @@ def apply_draft_to_session(draft: dict[str, Any]) -> None:
 
     urgent = draft.get("urgent_symptoms") or []
     st.session_state["urgent_symptoms"] = urgent if urgent else [NO_URGENT_SYMPTOMS]
-    st.session_state["main_reasons"] = draft.get("main_reasons") or []
+    draft_reasons = list(draft.get("main_reasons") or [])
+    st.session_state["main_reasons"] = draft_reasons
+    st.session_state["main_reasons_widget"] = draft_reasons
+    st.session_state["wizard_main_reasons_snapshot"] = draft_reasons
+    st.session_state["wizard_main_reasons_persist"] = draft_reasons
     st.session_state["additional_comment"] = draft.get("additional_comment", "")
+    st.session_state["wizard_patient_snapshot"] = {
+        "patient_full_name": st.session_state.get("patient_full_name", ""),
+        "patient_age": st.session_state.get("patient_age", 0),
+        "patient_sex": st.session_state.get("patient_sex", "Женский"),
+        "patient_phone": st.session_state.get("patient_phone", ""),
+        "patient_city": st.session_state.get("patient_city", ""),
+        "patient_height": st.session_state.get("patient_height", 0),
+        "patient_weight": st.session_state.get("patient_weight", 0.0),
+        "patient_reproductive_status": st.session_state.get("patient_reproductive_status", "Нет"),
+        "urgent_symptoms": st.session_state.get("urgent_symptoms", [NO_URGENT_SYMPTOMS]),
+    }
 
     common = draft.get("common") or {}
     for field, key in COMMON_SESSION_KEYS.items():
@@ -1043,17 +1149,21 @@ def init_draft_from_query() -> str | None:
         return st.session_state.get("active_draft_id")
 
     draft_id = safe_filename(draft_id)
-    if st.session_state.get(f"draft_applied_{draft_id}"):
-        st.session_state["active_draft_id"] = draft_id
-        return draft_id
-
     draft = load_draft(draft_id)
     if not draft:
         st.warning("Черновик не найден или срок хранения истёк.")
         return None
 
+    applied_version_key = f"draft_applied_updated_at_{draft_id}"
+    draft_updated_at = str(draft.get("updated_at", ""))
+    already_applied_same_version = st.session_state.get(applied_version_key) == draft_updated_at and bool(draft_updated_at)
+    if already_applied_same_version:
+        st.session_state["active_draft_id"] = draft_id
+        return draft_id
+
     apply_draft_to_session(draft)
     st.session_state[f"draft_applied_{draft_id}"] = True
+    st.session_state[applied_version_key] = draft_updated_at
     st.session_state["active_draft_id"] = draft_id
     st.session_state["draft_last_autosave_ts"] = time.time()
     st.session_state.pop("draft_files_to_remove", None)
@@ -1103,6 +1213,34 @@ def save_draft_files(
     return saved_files
 
 
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) == 0
+    if isinstance(value, (int, float)):
+        return value == 0
+    return False
+
+
+def _merge_prefer_filled(new_value: Any, old_value: Any) -> Any:
+    """
+    Не затираем заполненные поля старого черновика пустыми значениями.
+    """
+    if isinstance(new_value, dict) and isinstance(old_value, dict):
+        merged = dict(old_value)
+        for key, value in new_value.items():
+            merged[key] = _merge_prefer_filled(value, old_value.get(key))
+        return merged
+    if isinstance(new_value, list):
+        return new_value if new_value else (old_value if isinstance(old_value, list) else new_value)
+    if _is_blank_value(new_value):
+        return old_value
+    return new_value
+
+
 def save_draft(
     draft_payload: dict[str, Any],
     uploaded_files: list[Any],
@@ -1111,13 +1249,14 @@ def save_draft(
     init_storage()
     draft_id = safe_filename(draft_id or str(uuid.uuid4()))
     existing = load_draft(draft_id) or {}
+    payload = _merge_prefer_filled(draft_payload, existing) if existing else draft_payload
     remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
     existing_files = existing.get("files", [])
     saved_files = save_draft_files(draft_id, uploaded_files, existing_files, remove_stored)
 
     now = now_iso()
     draft = {
-        **draft_payload,
+        **payload,
         "id": draft_id,
         "status": "draft",
         "created_at": existing.get("created_at", now),
@@ -1340,10 +1479,16 @@ def render_patient_form() -> None:
     active_draft_id = init_draft_from_query()
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
+    sync_patient_snapshot()
+    hydrate_patient_state_from_snapshot()
 
     sidebar_save_clicked = False
     with st.sidebar:
         st.subheader("Черновик")
+        if save_error := st.session_state.pop("draft_save_error", None):
+            st.error(save_error)
+        if save_ok := st.session_state.pop("draft_save_ok", None):
+            st.success(save_ok)
         current_draft_id = st.session_state.get("active_draft_id") or active_draft_id
         if current_draft_id:
             st.caption(f"Активный: {current_draft_id}")
@@ -1443,20 +1588,35 @@ def render_patient_form() -> None:
                 formatted = "\n".join([f"- {field}" for field in missing_fields])
                 st.error(f"Заполните обязательные поля:\n{formatted}")
             else:
+                sync_patient_snapshot()
                 st.session_state.patient_wizard_step = 2
                 st.rerun()
 
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
-        if "main_reasons" not in st.session_state:
-            st.session_state["main_reasons"] = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        snapshot_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        persisted_reasons = list(st.session_state.get("wizard_main_reasons_persist") or [])
+        current_reasons = st.session_state.get("main_reasons_widget")
+        baseline_reasons = persisted_reasons or snapshot_reasons
+        if not isinstance(current_reasons, list) or (not current_reasons and baseline_reasons):
+            st.session_state["main_reasons_widget"] = list(baseline_reasons)
+            st.session_state["main_reasons"] = list(baseline_reasons)
         prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         st.multiselect(
             "Что является причиной обращения? Можно выбрать несколько.",
             list(MAIN_REASONS.keys()),
             format_func=lambda reason: MAIN_REASONS[reason],
-            key="main_reasons",
+            key="main_reasons_widget",
+            on_change=on_main_reasons_change,
         )
+        # Не затираем snapshot пустым списком на промежуточных rerun:
+        # иначе выбранная причина может потеряться при сохранении черновика.
+        current_reasons_after_render = st.session_state.get("main_reasons_widget")
+        if isinstance(current_reasons_after_render, list):
+            st.session_state["main_reasons"] = list(current_reasons_after_render)
+            st.session_state["wizard_main_reasons_persist"] = list(current_reasons_after_render)
+        if isinstance(current_reasons_after_render, list) and current_reasons_after_render:
+            st.session_state["wizard_main_reasons_snapshot"] = list(current_reasons_after_render)
         selected = get_selected_reasons()
         if prev_reasons and set(prev_reasons) != set(selected):
             st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
@@ -1635,13 +1795,21 @@ def render_patient_form() -> None:
 
     if sidebar_save_clicked:
         if not assigned_doctor.get("id"):
-            st.error("Врач не выбран — откройте страницу с ссылкой врача.")
+            st.session_state["draft_save_error"] = "Врач не выбран — откройте страницу с ссылкой врача."
+            st.rerun()
         else:
             payload = build_patient_payload_from_session(assigned_doctor)
+            if step >= 2 and not payload.get("main_reasons"):
+                st.session_state["draft_save_error"] = (
+                    "Нельзя сохранить черновик без причины обращения. Выберите причину на шаге 2."
+                )
+                st.rerun()
+                return
             uploaded_files = st.session_state.get("uploaded_files") or []
             current_draft_id = st.session_state.get("active_draft_id")
             draft_id = save_draft(payload, uploaded_files, draft_id=current_draft_id)
             st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+            st.session_state["draft_save_ok"] = "Черновик сохранён."
             st.rerun()
 
 

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Анкета {{ submission.id }}{% endblock %}
+{% block content %}
+  <h1>Анкета пациента</h1>
+  <p class="muted">ID: {{ submission.id }} · {{ submission.created_at }}</p>
+  <div class="actions" style="margin-bottom:16px;">
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:doctor_dashboard' %}">← К списку</a>
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:doctor_submission_summary_txt' submission.id %}">Скачать TXT</a>
+  </div>
+
+  <h2>Файлы пациента</h2>
+  {% if submission.files.all %}
+    <ul>
+      {% for file in submission.files.all %}
+        <li>
+          <a href="{{ file.file.url }}" target="_blank" rel="noopener">{{ file.file.name }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Файлы не загружены.</p>
+  {% endif %}
+
+  <h2>Резюме</h2>
+  <pre class="draft-link">{{ summary_text }}</pre>
+
+  <h2>Служебные поля</h2>
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="field">
+        {{ field.label_tag }}
+        {{ field }}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <div class="actions">
+      <button class="primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+
+  <details class="muted" style="margin-top:20px;">
+    <summary>Технические данные (JSON)</summary>
+    <pre class="draft-link">{{ data_json }}</pre>
+  </details>
+{% endblock %}

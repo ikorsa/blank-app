@@ -22,6 +22,44 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
+### Новый контур (Django, WIP)
+
+В репозитории добавлен более надёжный контур на Django (многошаговая форма с хранением черновиков в БД).
+
+Запуск локально:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+Открыть:
+
+```text
+http://localhost:8000/
+```
+
+Что уже перенесено в Django:
+- шаг 1 (данные пациента),
+- шаг 2 (причина обращения),
+- шаг 3 (общий анамнез),
+- шаг 4 (комментарий и загрузка файлов),
+- шаг 5 (проверка и отправка в `Submission` + `SubmissionFile`).
+
+Синхронизация врачей из текущего источника (`anamnes_storage`: JSON/PG):
+
+```bash
+python manage.py sync_doctors_from_legacy
+```
+
+Кабинет врача (Django):
+- URL: `/doctor/login/`
+- врач: логин = slug (`ivanova`), пароль из `doctors.json`
+- админ: логин `admin`, пароль `ANAMNES_ADMIN_PASSWORD`
+
 По умолчанию приложение слушает порт `9090`. В продакшене его лучше запускать через `systemd` на `127.0.0.1:9090` и отдавать наружу через Nginx:
 
 ```text
@@ -38,6 +76,26 @@ git pull
 source .venv/bin/activate
 pip install -r requirements.txt
 sudo systemctl restart anamnes
+```
+
+Или используйте готовый скрипт деплоя:
+
+```bash
+cd /opt/anamnes
+chmod +x scripts/update_vps.sh
+./scripts/update_vps.sh main
+```
+
+Для Django-контура:
+
+```bash
+APP_MODE=django APP_SERVICE=anamnes-django ./scripts/update_vps.sh main
+```
+
+Если хотите обновлять VPS с Windows одной командой:
+
+```bat
+scripts\update_vps.bat user@your-vps-ip main
 ```
 
 ## Переменные окружения

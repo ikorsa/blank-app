@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Кабинет врача{% endblock %}
+{% block content %}
+  <h1>Кабинет врача</h1>
+  <p class="muted">{{ auth.name }} · {{ auth.role }}</p>
+  <div class="actions" style="margin-bottom:16px;">
+    {% if auth.role == "admin" %}
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:admin_panel' %}">Панель админ</a>
+    {% endif %}
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:doctor_logout' %}">Выйти</a>
+  </div>
+
+  <form method="get" class="field">
+    <label for="q">Поиск</label>
+    <input id="q" name="q" value="{{ search }}" placeholder="ФИО, телефон, ID" />
+    <label for="status">Статус</label>
+    <select id="status" name="status">
+      <option value="all" {% if status == "all" %}selected{% endif %}>Все</option>
+      {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="actions">
+      <button class="primary" type="submit">Применить</button>
+    </div>
+  </form>
+
+  <p class="muted">Найдено: {{ total }}</p>
+
+  {% if submissions %}
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px 4px;">Пациент</th>
+          <th style="text-align:left; padding:8px 4px;">Причина</th>
+          <th style="text-align:left; padding:8px 4px;">Статус</th>
+          <th style="text-align:left; padding:8px 4px;">Дата</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in submissions %}
+          <tr>
+            <td style="padding:8px 4px;">
+              <a href="{% url 'intake:doctor_submission_detail' item.id %}">{{ item.patient_label }}</a>
+            </td>
+            <td style="padding:8px 4px;">{{ item.reason_label }}</td>
+            <td style="padding:8px 4px;">{{ item.get_status_display }}</td>
+            <td style="padding:8px 4px;">{{ item.created_at }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Анкет пока нет.</p>
+  {% endif %}
+{% endblock %}

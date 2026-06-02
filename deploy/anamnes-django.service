@@ -1,0 +1,17 @@
+[Unit]
+Description=Anamnes Django app (gunicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anamnes
+Group=anamnes
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/anamnes.env
+ExecStart=/opt/anamnes/.venv/bin/gunicorn anamnes_site.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 60
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

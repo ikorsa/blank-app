@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Проверка данных{% endblock %}
+{% block content %}
+  {% include "intake/_wizard_progress.html" %}
+  <h1>Проверка и отправка</h1>
+  <p class="muted">Проверьте данные перед отправкой врачу.</p>
+  {% if urgent_labels %}
+    <div class="msg warning">
+      Отмечены срочные симптомы: {{ urgent_labels|join:", " }}.
+      При острых состояниях обратитесь за неотложной помощью.
+    </div>
+  {% endif %}
+  {% if draft %}
+    <p class="muted">Черновик: {{ draft.id }}</p>
+  {% endif %}
+  <pre class="draft-link">{{ summary_text }}</pre>
+  {% if uploaded_names %}
+    <p class="muted">Будут отправлены вместе с анкетой:</p>
+    <ul>
+      {% for item in uploaded_names %}
+        <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="field">
+      <label for="submit-files">Добавить ещё файлы (необязательно)</label>
+      <input id="submit-files" type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png" />
+    </div>
+    <div class="actions">
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step5' %}{{ query_suffix }}">Назад</a>
+      <button class="primary" type="submit">Отправить врачу</button>
+    </div>
+  </form>
+  <div class="actions">
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step1' %}">Новая анкета</a>
+  </div>
+{% endblock %}

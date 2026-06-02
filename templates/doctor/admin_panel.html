@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Панель админ{% endblock %}
+{% block content %}
+  <h1>Панель админ</h1>
+  <p class="muted">{{ auth.name }} · {{ auth.role }}</p>
+  <div class="actions" style="margin-bottom:16px;">
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:doctor_dashboard' %}">← К кабинету</a>
+    <form method="post" style="display:inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="sync" />
+      <button class="secondary" type="submit">Синхронизировать врачей из legacy</button>
+    </form>
+  </div>
+
+  <h2>Уведомления (email / Telegram)</h2>
+  <ul>
+    {% for line in global_notify_status %}
+      <li>{{ line }}</li>
+    {% endfor %}
+  </ul>
+  <p class="muted">
+    Письма отправляются при отправке анкеты пациентом (Django). Копия администратору — на
+    <code>ANAMNES_SMTP_TO</code> (BCC), если отличается от email врача.
+    Пациенту письмо не отправляется (в анкете нет поля email).
+  </p>
+
+  <h2>Создать врача</h2>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create" />
+    {% for field in create_form %}
+      {% include "partials/form_field.html" with field=field %}
+    {% endfor %}
+    <div class="actions">
+      <button class="primary" type="submit">Создать</button>
+    </div>
+  </form>
+
+  <h2>Врачи</h2>
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left; padding:8px 4px;">Slug</th>
+        <th style="text-align:left; padding:8px 4px;">ФИО</th>
+        <th style="text-align:left; padding:8px 4px;">Специальность</th>
+        <th style="text-align:left; padding:8px 4px;">Email</th>
+        <th style="text-align:left; padding:8px 4px;">Активен</th>
+        <th style="text-align:left; padding:8px 4px;">Ссылка пациента</th>
+        <th style="text-align:left; padding:8px 4px;">Действие</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in doctors %}
+        <tr>
+          <td style="padding:8px 4px;">{{ doc.slug }}</td>
+          <td style="padding:8px 4px;">{{ doc.name }}</td>
+          <td style="padding:8px 4px;">{{ doc.specialty }}</td>
+          <td style="padding:8px 4px;">{{ doc.email|default:"—" }}</td>
+          <td style="padding:8px 4px;">{{ doc.is_active|yesno:"Да,Нет" }}</td>
+          <td style="padding:8px 4px;">
+            <code>{{ doc.patient_link }}</code>
+          </td>
+          <td style="padding:8px 4px;">
+            <a href="?edit={{ doc.slug }}">Редактировать</a>
+            <form method="post" style="display:inline; margin-left:8px;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle_active" />
+              <input type="hidden" name="slug" value="{{ doc.slug }}" />
+              <button class="secondary" type="submit">
+                {% if doc.is_active %}Деактивировать{% else %}Активировать{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if edit_form %}
+    <h2>Редактировать врача: {{ edit_slug }}</h2>
+    {% if notify_status %}
+      <h3>Статус уведомлений для этого врача</h3>
+      <ul>
+        {% for line in notify_status %}
+          <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" style="margin-bottom:16px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="test_notify" />
+        <input type="hidden" name="slug" value="{{ edit_slug }}" />
+        <button class="secondary" type="submit">Отправить тестовое уведомление</button>
+      </form>
+    {% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="edit" />
+      <input type="hidden" name="slug" value="{{ edit_slug }}" />
+      {% for field in edit_form %}
+        {% include "partials/form_field.html" with field=field %}
+      {% endfor %}
+      <div class="actions">
+        <button class="primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  {% endif %}
+{% endblock %}

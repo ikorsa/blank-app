@@ -1,0 +1,14 @@
+<div class="field">
+  {{ field.label_tag }}
+  {% if field.field.widget.input_type == "password" %}
+    <div class="password-wrap">
+      {{ field }}
+      <button type="button" class="password-toggle" aria-pressed="false" aria-label="Показать пароль">
+        Показать
+      </button>
+    </div>
+  {% else %}
+    {{ field }}
+  {% endif %}
+  {{ field.errors }}
+</div>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Анамнез эндокринолога{% endblock %}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; color: #1e1e1e; }
+      .wrap { max-width: 860px; margin: 24px auto; padding: 0 16px; }
+      .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+      h1 { margin-top: 0; }
+      .messages { margin-bottom: 14px; }
+      .msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 8px; }
+      .msg.success { background: #e7f7ec; }
+      .msg.error { background: #fde8e8; }
+      .msg.warning { background: #fff5db; }
+      .field { margin-bottom: 12px; }
+      .field > label { display: block; font-weight: 600; margin-bottom: 6px; }
+      input:not([type="checkbox"]):not([type="radio"]),
+      select,
+      textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+      textarea { min-height: 80px; resize: vertical; }
+      fieldset.branch-section { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 14px 6px; margin: 0 0 16px; }
+      fieldset.branch-section legend { font-weight: 700; padding: 0 6px; }
+      ul { margin: 0; padding-left: 18px; }
+      ul.errorlist { color: #a20000; margin: 6px 0 0; padding-left: 16px; }
+      .choice-list ul,
+      .checkbox-grid ul,
+      .radio-row ul { padding-left: 0; }
+      .actions { display: flex; gap: 10px; margin-top: 16px; }
+      button { border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+      .primary { background: #1677ff; color: white; }
+      .secondary { background: #e9ecef; color: #111; }
+      .muted { color: #666; font-size: 14px; }
+      .draft-link { font-family: monospace; word-break: break-all; background: #f1f3f5; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
+      .topnav { margin-bottom: 12px; font-size: 14px; }
+      .topnav a { margin-right: 12px; }
+      .wizard-progress { margin-bottom: 20px; }
+      .wizard-progress-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: #666; margin-bottom: 8px; }
+      .wizard-progress-label { font-weight: 600; color: #1677ff; }
+      .wizard-progress-track { height: 8px; background: #e9ecef; border-radius: 999px; overflow: hidden; }
+      .wizard-progress-fill { height: 100%; background: #1677ff; border-radius: 999px; transition: width .2s ease; }
+      .wizard-steps { list-style: none; display: flex; gap: 8px; padding: 10px 0 0; margin: 0; overflow-x: auto; }
+      .wizard-steps li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; white-space: nowrap; }
+      .wizard-steps li.active { color: #1677ff; font-weight: 700; }
+      .wizard-steps li.done { color: #444; }
+      .wizard-step-num { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #e9ecef; font-size: 11px; }
+      .wizard-steps li.active .wizard-step-num { background: #1677ff; color: #fff; }
+      .wizard-steps li.done .wizard-step-num { background: #d7ebff; color: #1677ff; }
+      .doctor-banner { background: #f4f8ff; border: 1px solid #dbe7ff; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+      .doctor-banner-label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+      .form-section { border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px 14px 6px; margin: 0 0 14px; }
+      .form-section legend { font-weight: 700; padding: 0 6px; }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+      .field-label { display: block; font-weight: 600; margin-bottom: 6px; }
+      .radio-row ul { list-style: none; padding: 0; margin: 0; display: flex; gap: 16px; flex-wrap: wrap; }
+      .radio-row li { display: flex; align-items: center; gap: 6px; }
+      .radio-row label { font-weight: 400; margin: 0; }
+      .radio-row input { width: auto; }
+      .checkbox-grid ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+      @media (max-width: 640px) { .checkbox-grid ul { grid-template-columns: 1fr; } }
+      .checkbox-grid li { display: flex; align-items: center; gap: 10px; }
+      .checkbox-grid label { font-weight: 400; margin: 0; line-height: 1.35; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+      .checkbox-grid input[type="checkbox"] { width: auto; min-width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
+      .choice-list > ul,
+      .field.choice-list ul { list-style: none; padding: 0; margin: 0; }
+      .field.choice-list > div[id] > div { margin-bottom: 10px; }
+      .field.choice-list > div[id] > div:last-child { margin-bottom: 0; }
+      .choice-list li,
+      .field.choice-list > div[id] > div { display: block; }
+      .choice-list li label,
+      .field.choice-list > div[id] > div > label {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 400;
+        margin: 0;
+        line-height: 1.4;
+        cursor: pointer;
+        vertical-align: middle;
+      }
+      .choice-list li { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .choice-list li:last-child { margin-bottom: 0; }
+      .choice-list input[type="checkbox"],
+      .choice-list input[type="radio"],
+      .field.choice-list input[type="checkbox"],
+      .field.choice-list input[type="radio"] {
+        width: 18px;
+        height: 18px;
+        min-width: 18px;
+        margin: 0;
+        padding: 0;
+        flex-shrink: 0;
+        vertical-align: middle;
+      }
+      .urgent-panel { background: #fffaf0; border-color: #f0dfbf; }
+      .urgent-warning { color: #8a4b00; font-size: 13px; margin: 10px 0 0; }
+      .urgent-note { margin: 0 0 10px; }
+      .bmi-hint { margin: 8px 0 0; }
+      .password-wrap { display: flex; gap: 8px; align-items: center; }
+      .password-wrap input { flex: 1; min-width: 0; }
+      .password-toggle {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        background: #f1f3f5;
+        color: #111;
+        font-size: 14px;
+        line-height: 1.2;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .password-toggle:hover { background: #e9ecef; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topnav">
+        <a href="{% url 'intake:step1' %}">Анкета пациента</a>
+        <a href="{% url 'intake:doctor_dashboard' %}">Кабинет врача</a>
+      </div>
+      <div class="card">
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              <div class="msg {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+    <script>
+      (function () {
+        document.querySelectorAll(".password-wrap").forEach(function (wrap) {
+          const input = wrap.querySelector("input");
+          const btn = wrap.querySelector(".password-toggle");
+          if (!input || !btn || btn.dataset.bound === "1") return;
+          btn.dataset.bound = "1";
+
+          btn.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const hidden = input.getAttribute("type") === "password";
+            const value = input.value;
+            input.setAttribute("type", hidden ? "text" : "password");
+            input.value = value;
+
+            btn.textContent = hidden ? "Скрыть" : "Показать";
+            btn.setAttribute("aria-label", hidden ? "Скрыть пароль" : "Показать пароль");
+            btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+          });
+        });
+      })();
+    </script>
+  </body>
+  </html>

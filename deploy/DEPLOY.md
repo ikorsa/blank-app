@@ -1,8 +1,28 @@
 # Деплой на VPS (anamnes.ikorsakov.tech)
 
-Стек: **Streamlit** (анкета) + **telegram_bot.py** (ссылки для пациентов) + **Nginx** + **HTTPS**.
+**Рекомендуемый стек:** **Django** (gunicorn `:8000`) + **Nginx** + **HTTPS** + **telegram_bot.py** (ссылки для пациентов).
 
-Данные MVP хранятся в `/opt/anamnes/data/` (JSON + файлы). PostgreSQL в этой ветке не требуется.
+Legacy **Streamlit** (`:9090`) — только для отката; после проверки отключите `anamnes.service`.
+
+Данные: SQLite/PostgreSQL (`ANAMNES_DATABASE_URL`) + файлы в `/opt/anamnes/media/`. JSON-legacy в `/opt/anamnes/data/` при миграции.
+
+## Быстрый чеклист продакшена (Django)
+
+1. Смержить PR в `main`, на VPS: `git pull origin main`.
+2. `/etc/anamnes.env` — скопировать из `deploy/anamnes.env.example`, задать `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS=anamnes.ikorsakov.tech`, `ANAMNES_ADMIN_PASSWORD`, SMTP.
+3. Один раз: `sudo bash /opt/anamnes/deploy/switch-to-django-only.sh`
+4. Проверка: `sudo bash /opt/anamnes/deploy/check-production.sh`
+5. SSL: при ошибке Chrome `NET::ERR_CERT_COMMON_NAME_INVALID` → `sudo bash /opt/anamnes/deploy/fix-ssl-cert.sh`
+
+Обновление после правок:
+
+```bash
+cd /opt/anamnes && sudo -u anamnes git pull
+sudo -u anamnes .venv/bin/pip install -r requirements.txt
+sudo -u anamnes .venv/bin/python manage.py migrate --noinput
+sudo -u anamnes .venv/bin/python manage.py collectstatic --noinput
+sudo systemctl restart anamnes-django
+```
 
 ## 1. Подготовка сервера (Ubuntu/Debian)
 
@@ -71,6 +91,24 @@ sudo ln -sf /etc/nginx/sites-available/anamnes /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d anamnes.ikorsakov.tech
 ```
+
+Certbot пропишет `ssl_certificate` в конфиг. Если вручную копировали `nginx-anamnes-django.conf.example` — **раскомментируйте** строки `ssl_certificate` или снова запустите certbot.
+
+### Ошибка Chrome `NET::ERR_CERT_COMMON_NAME_INVALID`
+
+Браузер видит сертификат **не для** `anamnes.ikorsakov.tech` (часто дефолтный nginx или сертификат другого сайта).
+
+На VPS:
+
+```bash
+# Проверка: для какого имени выдан текущий сертификат
+echo | openssl s_client -connect anamnes.ikorsakov.tech:443 -servername anamnes.ikorsakov.tech 2>/dev/null \
+  | openssl x509 -noout -subject -ext subjectAltName
+
+sudo bash /opt/anamnes/deploy/fix-ssl-cert.sh
+```
+
+Открывайте **точно** `https://anamnes.ikorsakov.tech` (без `www.`). DNS A-запись поддомена должна указывать на VPS.
 
 ## 6. Проверка
 
@@ -148,3 +186,60 @@ sudo -n /usr/bin/systemctl restart anamnes anamnes-bot
 
 - На ПК **не запускайте** `telegram_bot.py` с тем же токеном, что на сервере (ошибка 409).
 - Медицинские данные: только **HTTPS**, сильные пароли, бэкапы `data/`.
+
+---
+
+## Django-контур (надёжный режим, вместо Streamlit)
+
+Ниже минимальные шаги переключения на Django + gunicorn.
+
+### 1) Установить зависимости и миграции
+
+```bash
+cd /opt/anamnes
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+python manage.py sync_doctors_from_legacy
+```
+
+### 2) Включить systemd-сервис Django
+
+```bash
+sudo cp /opt/anamnes/deploy/anamnes-django.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable anamnes-django
+sudo systemctl restart anamnes-django
+sudo systemctl status anamnes-django --no-pager -l
+```
+
+### 3) Переключить Nginx на Django
+
+```bash
+sudo cp /opt/anamnes/deploy/nginx-anamnes-django.conf.example /etc/nginx/sites-available/anamnes
+sudo ln -sf /etc/nginx/sites-available/anamnes /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Если HTTPS ещё не выпускали:
+
+```bash
+sudo certbot --nginx -d anamnes.ikorsakov.tech
+```
+
+### 4) Остановить старый Streamlit-сервис (после проверки)
+
+```bash
+sudo systemctl stop anamnes
+sudo systemctl disable anamnes
+```
+
+### 5) Быстрый rollback
+
+```bash
+sudo systemctl stop anamnes-django
+sudo systemctl disable anamnes-django
+sudo systemctl enable anamnes
+sudo systemctl restart anamnes
+```
