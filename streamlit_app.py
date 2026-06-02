@@ -856,6 +856,51 @@ def get_selected_reasons() -> list[str]:
     return []
 
 
+def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[str, Any]:
+    """
+    Собирает payload анкеты из текущего session_state.
+    Используется для кнопки сохранения черновика с любого шага.
+    """
+    full_name = str(st.session_state.get("patient_full_name", ""))
+    age = int(st.session_state.get("patient_age") or 0)
+    sex = str(st.session_state.get("patient_sex", "Женский"))
+    phone = str(st.session_state.get("patient_phone", ""))
+    city = str(st.session_state.get("patient_city", ""))
+    height_cm = int(st.session_state.get("patient_height") or 0)
+    weight_kg = float(st.session_state.get("patient_weight") or 0.0)
+
+    reproductive_status = (
+        st.session_state.get("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
+    )
+
+    urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
+    selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
+
+    selected_reasons = get_selected_reasons()
+    common = collect_common_from_session()
+    branch = collect_branch_from_session(selected_reasons, sex)
+
+    additional_comment = str(st.session_state.get("additional_comment", ""))
+
+    return build_patient_form_payload(
+        assigned_doctor=assigned_doctor,
+        full_name=full_name,
+        age=age,
+        sex=sex,
+        phone=phone,
+        city=city,
+        height_cm=height_cm,
+        weight_kg=weight_kg,
+        reproductive_status=reproductive_status,
+        selected_reasons=selected_reasons,
+        selected_urgent_symptoms=selected_urgent,
+        urgent_symptoms=urgent_symptoms,
+        common=common,
+        branch=branch,
+        additional_comment=additional_comment,
+    )
+
+
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
     assigned_doctor = submission.get("assigned_doctor", {})
@@ -1295,6 +1340,29 @@ def render_patient_form() -> None:
     active_draft_id = init_draft_from_query()
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
+
+    with st.sidebar:
+        st.subheader("Черновик")
+        if st.session_state.get("active_draft_id"):
+            st.caption(f"Активный: {st.session_state.get('active_draft_id')}")
+        uploaded_files_count = len(st.session_state.get("uploaded_files") or [])
+        st.caption(f"Файлы в черновик: {uploaded_files_count}")
+        if st.button(
+            "Сохранить черновик (в любое время)",
+            type="secondary",
+            use_container_width=True,
+            key="sidebar_save_draft_button",
+        ):
+            if not assigned_doctor.get("id"):
+                st.error("Врач не выбран — откройте страницу с ссылкой врача.")
+            else:
+                payload = build_patient_payload_from_session(assigned_doctor)
+                uploaded_files = st.session_state.get("uploaded_files") or []
+                draft_id = save_draft(payload, uploaded_files, draft_id=active_draft_id)
+                st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+                link = draft_resume_url(assigned_doctor["id"], draft_id)
+                st.success("Черновик сохранён.")
+                st.code(link, language=None)
 
     if done := st.session_state.get("patient_submission_done"):
         for message in st.session_state.pop("submission_notify_ok", []):
