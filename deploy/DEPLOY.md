@@ -72,6 +72,24 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d anamnes.ikorsakov.tech
 ```
 
+Certbot пропишет `ssl_certificate` в конфиг. Если вручную копировали `nginx-anamnes-django.conf.example` — **раскомментируйте** строки `ssl_certificate` или снова запустите certbot.
+
+### Ошибка Chrome `NET::ERR_CERT_COMMON_NAME_INVALID`
+
+Браузер видит сертификат **не для** `anamnes.ikorsakov.tech` (часто дефолтный nginx или сертификат другого сайта).
+
+На VPS:
+
+```bash
+# Проверка: для какого имени выдан текущий сертификат
+echo | openssl s_client -connect anamnes.ikorsakov.tech:443 -servername anamnes.ikorsakov.tech 2>/dev/null \
+  | openssl x509 -noout -subject -ext subjectAltName
+
+sudo bash /opt/anamnes/deploy/fix-ssl-cert.sh
+```
+
+Открывайте **точно** `https://anamnes.ikorsakov.tech` (без `www.`). DNS A-запись поддомена должна указывать на VPS.
+
 ## 6. Проверка
 
 - Сайт: https://anamnes.ikorsakov.tech/?doctor=ivanova  
