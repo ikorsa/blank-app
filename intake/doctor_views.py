@@ -88,7 +88,18 @@ def doctor_login(request: HttpRequest) -> HttpResponse:
                 request.session.modified = True
                 return redirect("intake:doctor_dashboard")
 
-            messages.error(request, "Неверный логин или пароль.")
+            if login == "admin":
+                messages.error(
+                    request,
+                    "Неверный пароль admin. Проверьте ANAMNES_ADMIN_PASSWORD на сервере (/etc/anamnes.env).",
+                )
+            elif doctor and not doctor.password:
+                messages.error(
+                    request,
+                    f"У врача «{login}» не задан пароль кабинета. Задайте его в панели админ (войдите как admin).",
+                )
+            else:
+                messages.error(request, "Неверный логин или пароль врача.")
     else:
         form = DoctorLoginForm()
 

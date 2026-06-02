@@ -2,7 +2,11 @@
 {% block title %}Кабинет врача — вход{% endblock %}
 {% block content %}
   <h1>Кабинет врача</h1>
-  <p class="muted">Войдите логином врача (slug) или admin.</p>
+  <p class="muted">Войдите логином врача (slug, например <code>ivanova</code>) или <code>admin</code>.</p>
+  <p class="muted">
+    Пароль <code>admin</code> — из <code>ANAMNES_ADMIN_PASSWORD</code> на сервере.
+    Пароль врача — из карточки врача в панели админ (не путать).
+  </p>
   <form method="post">
     {% csrf_token %}
     {% for field in form %}

@@ -209,7 +209,10 @@ class Step5Form(forms.Form):
 
 class DoctorLoginForm(forms.Form):
     login = forms.CharField(label="Логин врача или admin", max_length=64)
-    password = forms.CharField(label="Пароль", widget=forms.PasswordInput)
+    password = forms.CharField(
+        label="Пароль",
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}),
+    )
 
 
 class SubmissionDoctorForm(forms.ModelForm):
@@ -219,6 +222,7 @@ class SubmissionDoctorForm(forms.ModelForm):
         widgets = {
             "doctor_note": forms.Textarea(attrs={"rows": 4}),
             "requested_documents": forms.Textarea(attrs={"rows": 3}),
+            "password": forms.PasswordInput(attrs={"autocomplete": "new-password"}),
         }
         labels = {
             "status": "Статус анкеты",
