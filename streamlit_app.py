@@ -845,6 +845,17 @@ def collect_branch_from_session(reasons: list[str], sex: str) -> dict[str, Any]:
     return branches
 
 
+def get_selected_reasons() -> list[str]:
+    current = st.session_state.get("main_reasons")
+    if isinstance(current, list) and current:
+        st.session_state["wizard_main_reasons_snapshot"] = list(current)
+        return current
+    snapshot = st.session_state.get("wizard_main_reasons_snapshot")
+    if isinstance(snapshot, list) and snapshot:
+        return snapshot
+    return []
+
+
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
     assigned_doctor = submission.get("assigned_doctor", {})
@@ -1351,6 +1362,8 @@ def render_patient_form() -> None:
 
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
+        if "main_reasons" not in st.session_state:
+            st.session_state["main_reasons"] = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         st.multiselect(
             "Что является причиной обращения? Можно выбрать несколько.",
@@ -1358,7 +1371,7 @@ def render_patient_form() -> None:
             format_func=lambda reason: MAIN_REASONS[reason],
             key="main_reasons",
         )
-        selected = st.session_state.get("main_reasons") or []
+        selected = get_selected_reasons()
         if prev_reasons and set(prev_reasons) != set(selected):
             st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
         back, nxt = render_nav()
@@ -1376,7 +1389,7 @@ def render_patient_form() -> None:
     elif step == 3:
         st.subheader("Шаг 3. Анамнез")
         sex = st.session_state.get("patient_sex", "Женский")
-        selected_reasons = st.session_state.get("main_reasons") or []
+        selected_reasons = get_selected_reasons()
         render_common_questions()
         if selected_reasons:
             render_branches(selected_reasons, sex)
@@ -1430,7 +1443,7 @@ def render_patient_form() -> None:
         )
         urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
         selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
-        selected_reasons = st.session_state.get("main_reasons") or []
+        selected_reasons = get_selected_reasons()
         common = collect_common_from_session()
         branch = collect_branch_from_session(selected_reasons, sex)
         additional_comment = str(st.session_state.get("additional_comment", ""))
