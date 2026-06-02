@@ -845,6 +845,62 @@ def collect_branch_from_session(reasons: list[str], sex: str) -> dict[str, Any]:
     return branches
 
 
+def get_selected_reasons() -> list[str]:
+    current = st.session_state.get("main_reasons")
+    if isinstance(current, list) and current:
+        st.session_state["wizard_main_reasons_snapshot"] = list(current)
+        return current
+    snapshot = st.session_state.get("wizard_main_reasons_snapshot")
+    if isinstance(snapshot, list) and snapshot:
+        return snapshot
+    return []
+
+
+def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[str, Any]:
+    """
+    Собирает payload анкеты из текущего session_state.
+    Используется для кнопки сохранения черновика с любого шага.
+    """
+    full_name = str(st.session_state.get("patient_full_name", ""))
+    age = int(st.session_state.get("patient_age") or 0)
+    sex = str(st.session_state.get("patient_sex", "Женский"))
+    phone = str(st.session_state.get("patient_phone", ""))
+    city = str(st.session_state.get("patient_city", ""))
+    height_cm = int(st.session_state.get("patient_height") or 0)
+    weight_kg = float(st.session_state.get("patient_weight") or 0.0)
+
+    reproductive_status = (
+        st.session_state.get("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
+    )
+
+    urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
+    selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
+
+    selected_reasons = get_selected_reasons()
+    common = collect_common_from_session()
+    branch = collect_branch_from_session(selected_reasons, sex)
+
+    additional_comment = str(st.session_state.get("additional_comment", ""))
+
+    return build_patient_form_payload(
+        assigned_doctor=assigned_doctor,
+        full_name=full_name,
+        age=age,
+        sex=sex,
+        phone=phone,
+        city=city,
+        height_cm=height_cm,
+        weight_kg=weight_kg,
+        reproductive_status=reproductive_status,
+        selected_reasons=selected_reasons,
+        selected_urgent_symptoms=selected_urgent,
+        urgent_symptoms=urgent_symptoms,
+        common=common,
+        branch=branch,
+        additional_comment=additional_comment,
+    )
+
+
 def build_summary(submission: dict[str, Any]) -> str:
     patient = submission["patient"]
     assigned_doctor = submission.get("assigned_doctor", {})
@@ -1285,6 +1341,28 @@ def render_patient_form() -> None:
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
 
+    sidebar_save_clicked = False
+    with st.sidebar:
+        st.subheader("Черновик")
+        current_draft_id = st.session_state.get("active_draft_id") or active_draft_id
+        if current_draft_id:
+            st.caption(f"Активный: {current_draft_id}")
+            st.markdown("**Ссылка для продолжения черновика:**")
+            st.text_input(
+                "Скопируйте и сохраните ссылку",
+                value=draft_resume_url(assigned_doctor["id"], current_draft_id),
+                disabled=True,
+                key="sidebar_draft_link",
+            )
+        uploaded_files_count = len(st.session_state.get("uploaded_files") or [])
+        st.caption(f"Файлы в черновик: {uploaded_files_count}")
+        sidebar_save_clicked = st.button(
+            "Сохранить черновик (в любое время)",
+            type="secondary",
+            use_container_width=True,
+            key="sidebar_save_draft_button",
+        )
+
     if done := st.session_state.get("patient_submission_done"):
         for message in st.session_state.pop("submission_notify_ok", []):
             st.success(message)
@@ -1325,16 +1403,17 @@ def render_patient_form() -> None:
 
     if step == 1:
         st.subheader("Шаг 1. О вас")
+        st.caption("Поля, отмеченные *, обязательны.")
         col1, col2 = st.columns(2)
         with col1:
-            st.text_input("ФИО", key="patient_full_name")
-            st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
-            sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
-            st.text_input("Телефон для связи", key="patient_phone", placeholder="+7 ...")
+            st.text_input("ФИО *", key="patient_full_name")
+            st.number_input("Возраст *", min_value=0, max_value=120, step=1, key="patient_age")
+            sex = st.selectbox("Пол *", ["Женский", "Мужской"], key="patient_sex")
+            st.text_input("Телефон для связи *", key="patient_phone", placeholder="+7 ...")
         with col2:
-            st.text_input("Город", key="patient_city")
-            st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
-            st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
+            st.text_input("Город *", key="patient_city")
+            st.number_input("Рост, см *", min_value=0, max_value=250, step=1, key="patient_height")
+            st.number_input("Вес, кг *", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
         if st.session_state.get("patient_sex") == "Женский":
             st.selectbox(
                 "Беременность / лактация",
@@ -1346,11 +1425,31 @@ def render_patient_form() -> None:
         st.caption("При острых симптомах — скорая помощь, не эта анкета.")
         back, nxt = render_nav(back=False)
         if nxt:
-            st.session_state.patient_wizard_step = 2
-            st.rerun()
+            missing_fields: list[str] = []
+            if not str(st.session_state.get("patient_full_name", "")).strip():
+                missing_fields.append("ФИО")
+            if int(st.session_state.get("patient_age") or 0) <= 0:
+                missing_fields.append("Возраст")
+            if not str(st.session_state.get("patient_phone", "")).strip():
+                missing_fields.append("Телефон для связи")
+            if not str(st.session_state.get("patient_city", "")).strip():
+                missing_fields.append("Город")
+            if int(st.session_state.get("patient_height") or 0) <= 0:
+                missing_fields.append("Рост")
+            if float(st.session_state.get("patient_weight") or 0.0) <= 0:
+                missing_fields.append("Вес")
+
+            if missing_fields:
+                formatted = "\n".join([f"- {field}" for field in missing_fields])
+                st.error(f"Заполните обязательные поля:\n{formatted}")
+            else:
+                st.session_state.patient_wizard_step = 2
+                st.rerun()
 
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
+        if "main_reasons" not in st.session_state:
+            st.session_state["main_reasons"] = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         st.multiselect(
             "Что является причиной обращения? Можно выбрать несколько.",
@@ -1358,7 +1457,7 @@ def render_patient_form() -> None:
             format_func=lambda reason: MAIN_REASONS[reason],
             key="main_reasons",
         )
-        selected = st.session_state.get("main_reasons") or []
+        selected = get_selected_reasons()
         if prev_reasons and set(prev_reasons) != set(selected):
             st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
         back, nxt = render_nav()
@@ -1376,7 +1475,7 @@ def render_patient_form() -> None:
     elif step == 3:
         st.subheader("Шаг 3. Анамнез")
         sex = st.session_state.get("patient_sex", "Женский")
-        selected_reasons = st.session_state.get("main_reasons") or []
+        selected_reasons = get_selected_reasons()
         render_common_questions()
         if selected_reasons:
             render_branches(selected_reasons, sex)
@@ -1430,7 +1529,7 @@ def render_patient_form() -> None:
         )
         urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
         selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
-        selected_reasons = st.session_state.get("main_reasons") or []
+        selected_reasons = get_selected_reasons()
         common = collect_common_from_session()
         branch = collect_branch_from_session(selected_reasons, sex)
         additional_comment = str(st.session_state.get("additional_comment", ""))
@@ -1533,6 +1632,17 @@ def render_patient_form() -> None:
                     "summary": submission.get("summary", ""),
                 }
                 st.rerun()
+
+    if sidebar_save_clicked:
+        if not assigned_doctor.get("id"):
+            st.error("Врач не выбран — откройте страницу с ссылкой врача.")
+        else:
+            payload = build_patient_payload_from_session(assigned_doctor)
+            uploaded_files = st.session_state.get("uploaded_files") or []
+            current_draft_id = st.session_state.get("active_draft_id")
+            draft_id = save_draft(payload, uploaded_files, draft_id=current_draft_id)
+            st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+            st.rerun()
 
 
 def render_doctor_dashboard() -> None:
