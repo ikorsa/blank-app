@@ -12,6 +12,18 @@
     </form>
   </div>
 
+  <h2>Уведомления (email / Telegram)</h2>
+  <ul>
+    {% for line in global_notify_status %}
+      <li>{{ line }}</li>
+    {% endfor %}
+  </ul>
+  <p class="muted">
+    Письма отправляются при отправке анкеты пациентом (Django). Копия администратору — на
+    <code>ANAMNES_SMTP_TO</code> (BCC), если отличается от email врача.
+    Пациенту письмо не отправляется (в анкете нет поля email).
+  </p>
+
   <h2>Создать врача</h2>
   <form method="post">
     {% csrf_token %}
@@ -70,6 +82,20 @@
 
   {% if edit_form %}
     <h2>Редактировать врача: {{ edit_slug }}</h2>
+    {% if notify_status %}
+      <h3>Статус уведомлений для этого врача</h3>
+      <ul>
+        {% for line in notify_status %}
+          <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" style="margin-bottom:16px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="test_notify" />
+        <input type="hidden" name="slug" value="{{ edit_slug }}" />
+        <button class="secondary" type="submit">Отправить тестовое уведомление</button>
+      </form>
+    {% endif %}
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="edit" />

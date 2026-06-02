@@ -350,6 +350,23 @@ def summary(request: HttpRequest) -> HttpResponse:
         request.session.pop("uploaded_file_names", None)
         if draft:
             draft.delete()
+
+        from .notifications import notify_after_submission
+
+        notify_results = notify_after_submission(submission)
+        if notify_results:
+            for ok, note in notify_results:
+                if ok:
+                    messages.success(request, note)
+                else:
+                    messages.warning(request, note)
+        else:
+            messages.warning(
+                request,
+                "Анкета сохранена, но уведомления не отправлены: настройте SMTP (ANAMNES_SMTP_*) "
+                "и укажите email врача, либо Telegram chat_id.",
+            )
+
         messages.success(request, f"Анкета отправлена. ID: {submission.id}")
         return redirect(reverse("intake:step1"))
 

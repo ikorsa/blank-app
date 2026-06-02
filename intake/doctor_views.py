@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from .forms import DoctorAdminForm, DoctorLoginForm, SubmissionDoctorForm
 from .models import Doctor, Submission
+from .notifications import doctor_as_notify_dict, notify_status_for_doctor
 from .summary import build_submission_summary_from_model, patient_name, reason_labels
 
 SESSION_ROLE = "dc_role"
@@ -201,6 +202,21 @@ def admin_panel(request: HttpRequest) -> HttpResponse:
                 )
             return redirect("intake:admin_panel")
 
+        if action == "test_notify":
+            slug = request.POST.get("slug", "").strip().lower()
+            doctor = Doctor.objects.filter(slug=slug).first()
+            if not doctor:
+                messages.error(request, "Врач не найден.")
+                return redirect("intake:admin_panel")
+            from doctor_notifications import send_test_notifications
+
+            for ok, note in send_test_notifications(doctor_as_notify_dict(doctor)):
+                if ok:
+                    messages.success(request, note)
+                else:
+                    messages.warning(request, note)
+            return redirect(f"{reverse('intake:admin_panel')}?edit={slug}")
+
         slug = request.POST.get("slug", "").strip().lower()
         if action == "edit" and slug:
             doctor = get_object_or_404(Doctor, slug=slug)
@@ -220,10 +236,17 @@ def admin_panel(request: HttpRequest) -> HttpResponse:
 
     edit_slug = request.GET.get("edit", "").strip().lower()
     edit_form = None
+    edit_doctor = None
+    notify_status: list[str] = []
     if edit_slug:
-        doctor = Doctor.objects.filter(slug=edit_slug).first()
-        if doctor:
-            edit_form = DoctorAdminForm(instance=doctor)
+        edit_doctor = Doctor.objects.filter(slug=edit_slug).first()
+        if edit_doctor:
+            edit_form = DoctorAdminForm(instance=edit_doctor)
+            notify_status = notify_status_for_doctor(edit_doctor)
+
+    from doctor_notifications import notification_status_lines, smtp_configured
+
+    global_notify_status = notification_status_lines({})
 
     for doctor in doctors:
         doctor.patient_link = request.build_absolute_uri(f"{reverse('intake:step1')}?doctor={doctor.slug}")
@@ -237,5 +260,9 @@ def admin_panel(request: HttpRequest) -> HttpResponse:
             "create_form": form,
             "edit_slug": edit_slug,
             "edit_form": edit_form,
+            "edit_doctor": edit_doctor,
+            "notify_status": notify_status,
+            "global_notify_status": global_notify_status,
+            "smtp_configured": smtp_configured(),
         },
     )

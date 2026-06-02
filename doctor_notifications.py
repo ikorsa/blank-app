@@ -105,6 +105,8 @@ def send_submission_email(submission: dict[str, Any]) -> tuple[bool, str]:
     message["Subject"] = subject
     message["From"] = SMTP_FROM
     message["To"] = recipient
+    if SMTP_TO and SMTP_TO.strip().lower() != recipient.strip().lower():
+        message["Bcc"] = SMTP_TO.strip()
     message.set_content(body)
     message.add_attachment(
         json.dumps(submission, ensure_ascii=False, indent=2).encode("utf-8"),
@@ -187,6 +189,13 @@ def notify_doctor_on_submission(submission: dict[str, Any]) -> list[tuple[bool, 
             results.append(send_submission_email(submission))
         except Exception as exc:
             results.append((False, f"Email не отправлен: {exc}"))
+    elif smtp_configured():
+        results.append(
+            (
+                False,
+                "Email: у врача не указан адрес. Заполните email в карточке врача или ANAMNES_SMTP_TO.",
+            )
+        )
     if doctor_telegram_ready(doctor):
         try:
             results.append(send_telegram_notification(submission))
