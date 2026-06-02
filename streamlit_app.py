@@ -1341,28 +1341,19 @@ def render_patient_form() -> None:
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
 
+    sidebar_save_clicked = False
     with st.sidebar:
         st.subheader("Черновик")
         if st.session_state.get("active_draft_id"):
             st.caption(f"Активный: {st.session_state.get('active_draft_id')}")
         uploaded_files_count = len(st.session_state.get("uploaded_files") or [])
         st.caption(f"Файлы в черновик: {uploaded_files_count}")
-        if st.button(
+        sidebar_save_clicked = st.button(
             "Сохранить черновик (в любое время)",
             type="secondary",
             use_container_width=True,
             key="sidebar_save_draft_button",
-        ):
-            if not assigned_doctor.get("id"):
-                st.error("Врач не выбран — откройте страницу с ссылкой врача.")
-            else:
-                payload = build_patient_payload_from_session(assigned_doctor)
-                uploaded_files = st.session_state.get("uploaded_files") or []
-                draft_id = save_draft(payload, uploaded_files, draft_id=active_draft_id)
-                st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
-                link = draft_resume_url(assigned_doctor["id"], draft_id)
-                st.success("Черновик сохранён.")
-                st.code(link, language=None)
+        )
 
     if done := st.session_state.get("patient_submission_done"):
         for message in st.session_state.pop("submission_notify_ok", []):
@@ -1633,6 +1624,17 @@ def render_patient_form() -> None:
                     "summary": submission.get("summary", ""),
                 }
                 st.rerun()
+
+    if sidebar_save_clicked:
+        if not assigned_doctor.get("id"):
+            st.error("Врач не выбран — откройте страницу с ссылкой врача.")
+        else:
+            payload = build_patient_payload_from_session(assigned_doctor)
+            uploaded_files = st.session_state.get("uploaded_files") or []
+            current_draft_id = st.session_state.get("active_draft_id")
+            draft_id = save_draft(payload, uploaded_files, draft_id=current_draft_id)
+            st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+            st.rerun()
 
 
 def render_doctor_dashboard() -> None:
