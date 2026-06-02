@@ -40,20 +40,53 @@ REPRODUCTIVE_STATUS_CHOICES = [
 
 
 class Step1Form(forms.Form):
-    full_name = forms.CharField(label="ФИО", max_length=255)
-    age = forms.IntegerField(label="Возраст", min_value=1, max_value=120)
-    sex = forms.ChoiceField(label="Пол", choices=[("female", "Женский"), ("male", "Мужской")])
-    phone = forms.CharField(label="Телефон", max_length=50)
-    city = forms.CharField(label="Город", max_length=120)
-    height_cm = forms.IntegerField(label="Рост, см", min_value=1, max_value=250)
-    weight_kg = forms.DecimalField(label="Вес, кг", min_value=0.1, max_digits=6, decimal_places=1)
+    full_name = forms.CharField(
+        label="ФИО",
+        max_length=255,
+        widget=forms.TextInput(attrs={"placeholder": "Иванова Мария Петровна", "autocomplete": "name"}),
+    )
+    age = forms.IntegerField(
+        label="Возраст",
+        min_value=1,
+        max_value=120,
+        widget=forms.NumberInput(attrs={"placeholder": "45", "inputmode": "numeric"}),
+    )
+    sex = forms.ChoiceField(
+        label="Пол",
+        choices=[("female", "Женский"), ("male", "Мужской")],
+        widget=forms.RadioSelect,
+    )
+    phone = forms.CharField(
+        label="Телефон для связи",
+        max_length=50,
+        widget=forms.TextInput(attrs={"placeholder": "+7 900 000-00-00", "autocomplete": "tel", "inputmode": "tel"}),
+    )
+    city = forms.CharField(
+        label="Город",
+        max_length=120,
+        widget=forms.TextInput(attrs={"placeholder": "Москва", "autocomplete": "address-level2"}),
+    )
+    height_cm = forms.IntegerField(
+        label="Рост, см",
+        min_value=1,
+        max_value=250,
+        widget=forms.NumberInput(attrs={"placeholder": "170", "inputmode": "numeric", "id": "id_height_cm"}),
+    )
+    weight_kg = forms.DecimalField(
+        label="Вес, кг",
+        min_value=0.1,
+        max_digits=6,
+        decimal_places=1,
+        widget=forms.NumberInput(attrs={"placeholder": "72.5", "inputmode": "decimal", "step": "0.1", "id": "id_weight_kg"}),
+    )
     reproductive_status = forms.ChoiceField(
-        label="Беременность / лактация (для женского пола)",
-        choices=REPRODUCTIVE_STATUS_CHOICES,
+        label="Беременность / лактация",
+        choices=[choice for choice in REPRODUCTIVE_STATUS_CHOICES if choice[0] != ""],
         required=False,
+        initial="no",
     )
     urgent_symptoms = forms.MultipleChoiceField(
-        label="Срочные симптомы (при острых — скорая помощь, не эта анкета)",
+        label="Отметьте, если есть сейчас",
         choices=URGENT_SYMPTOM_CHOICES,
         required=False,
         widget=forms.CheckboxSelectMultiple,

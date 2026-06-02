@@ -30,6 +30,38 @@
       .draft-link { font-family: monospace; word-break: break-all; background: #f1f3f5; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
       .topnav { margin-bottom: 12px; font-size: 14px; }
       .topnav a { margin-right: 12px; }
+      .wizard-progress { margin-bottom: 20px; }
+      .wizard-progress-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: #666; margin-bottom: 8px; }
+      .wizard-progress-label { font-weight: 600; color: #1677ff; }
+      .wizard-progress-track { height: 8px; background: #e9ecef; border-radius: 999px; overflow: hidden; }
+      .wizard-progress-fill { height: 100%; background: #1677ff; border-radius: 999px; transition: width .2s ease; }
+      .wizard-steps { list-style: none; display: flex; gap: 8px; padding: 10px 0 0; margin: 0; overflow-x: auto; }
+      .wizard-steps li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; white-space: nowrap; }
+      .wizard-steps li.active { color: #1677ff; font-weight: 700; }
+      .wizard-steps li.done { color: #444; }
+      .wizard-step-num { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #e9ecef; font-size: 11px; }
+      .wizard-steps li.active .wizard-step-num { background: #1677ff; color: #fff; }
+      .wizard-steps li.done .wizard-step-num { background: #d7ebff; color: #1677ff; }
+      .doctor-banner { background: #f4f8ff; border: 1px solid #dbe7ff; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+      .doctor-banner-label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+      .form-section { border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px 14px 6px; margin: 0 0 14px; }
+      .form-section legend { font-weight: 700; padding: 0 6px; }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+      .field-label { display: block; font-weight: 600; margin-bottom: 6px; }
+      .radio-row ul { list-style: none; padding: 0; margin: 0; display: flex; gap: 16px; flex-wrap: wrap; }
+      .radio-row li { display: flex; align-items: center; gap: 6px; }
+      .radio-row label { font-weight: 400; margin: 0; }
+      .radio-row input { width: auto; }
+      .checkbox-grid ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+      @media (max-width: 640px) { .checkbox-grid ul { grid-template-columns: 1fr; } }
+      .checkbox-grid li { display: flex; align-items: flex-start; gap: 8px; }
+      .checkbox-grid label { font-weight: 400; margin: 0; line-height: 1.35; }
+      .checkbox-grid input { width: auto; margin-top: 3px; }
+      .urgent-panel { background: #fffaf0; border-color: #f0dfbf; }
+      .urgent-warning { color: #8a4b00; font-size: 13px; margin: 10px 0 0; }
+      .urgent-note { margin: 0 0 10px; }
+      .bmi-hint { margin: 8px 0 0; }
     </style>
   </head>
   <body>

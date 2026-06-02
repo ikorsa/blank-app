@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Шаг 3 — Общий анамнез{% endblock %}
 {% block content %}
-  <h1>Шаг 3. Общий анамнез</h1>
+  {% include "intake/_wizard_progress.html" %}
+  <h1>Общий анамнез</h1>
   <p class="muted">Заполните базовые жалобы и препараты.</p>
   {% if draft %}
     <p class="muted">Черновик: {{ draft.id }}</p>

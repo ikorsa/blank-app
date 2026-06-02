@@ -12,6 +12,7 @@ from django.urls import reverse
 from .branch_forms import BranchForm
 from .forms import Step1Form, Step2Form, Step3Form, Step5Form, URGENT_SYMPTOM_CHOICES
 from .models import Doctor, Draft, Submission, SubmissionFile
+from .wizard import WIZARD_STEPS, WIZARD_TOTAL
 
 SESSION_KEY = "intake_wizard_data"
 
@@ -99,6 +100,16 @@ def _query_suffix(doctor: Doctor | None, draft: Draft | None = None) -> str:
     return suffix
 
 
+def _wizard_context(step: int) -> dict[str, object]:
+    step_label = dict(WIZARD_STEPS).get(step, "")
+    return {
+        "wizard_step": step,
+        "wizard_total": WIZARD_TOTAL,
+        "wizard_step_label": step_label,
+        "wizard_steps": WIZARD_STEPS,
+    }
+
+
 def _step_dict(data: dict[str, Any], key: str) -> dict[str, Any]:
     value = data.get(key)
     return value if isinstance(value, dict) else {}
@@ -164,6 +175,7 @@ def step1(request: HttpRequest) -> HttpResponse:
             "doctor": doctor,
             "draft": draft,
             "query_suffix": _query_suffix(doctor, draft),
+            **_wizard_context(1),
         },
     )
 
@@ -200,6 +212,7 @@ def step2(request: HttpRequest) -> HttpResponse:
             "doctor": doctor,
             "draft": draft,
             "query_suffix": _query_suffix(doctor, draft),
+            **_wizard_context(2),
         },
     )
 
@@ -227,7 +240,7 @@ def step3(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "intake/step3.html",
-        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft)},
+        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft), **_wizard_context(3)},
     )
 
 
@@ -274,6 +287,7 @@ def step4(request: HttpRequest) -> HttpResponse:
             "draft": draft,
             "query_suffix": _query_suffix(doctor, draft),
             "urgent_labels": urgent_labels,
+            **_wizard_context(4),
         },
     )
 
@@ -310,7 +324,7 @@ def step5(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "intake/step5.html",
-        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft)},
+        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft), **_wizard_context(5)},
     )
 
 
@@ -350,5 +364,6 @@ def summary(request: HttpRequest) -> HttpResponse:
             "uploaded_names": request.session.get("uploaded_file_names", []),
             "query_suffix": _query_suffix(doctor, draft),
             "urgent_labels": urgent_labels,
+            **_wizard_context(6),
         },
     )

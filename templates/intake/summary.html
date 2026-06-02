@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Проверка данных{% endblock %}
 {% block content %}
-  <h1>Шаг 6. Проверка и отправка</h1>
+  {% include "intake/_wizard_progress.html" %}
+  <h1>Проверка и отправка</h1>
   <p class="muted">Проверьте данные перед отправкой врачу.</p>
   {% if urgent_labels %}
     <div class="msg warning">
