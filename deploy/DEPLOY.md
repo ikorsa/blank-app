@@ -10,7 +10,8 @@ Legacy **Streamlit** (`:9090`) — только для отката; после 
 
 1. Смержить PR в `main`, на VPS: `git pull origin main`.
 2. `/etc/anamnes.env` — скопировать из `deploy/anamnes.env.example`, задать `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS=anamnes.ikorsakov.tech`, `ANAMNES_ADMIN_PASSWORD`, SMTP.
-3. Один раз: `sudo bash /opt/anamnes/deploy/switch-to-django-only.sh`
+3. Один раз: `sudo bash /opt/anamnes/deploy/switch-to-django-only.sh`  
+   (пользователь сервиса = владелец `/opt/anamnes`, обычно `ikorsa`; иначе `export ANAMNES_USER=ikorsa`)
 4. Проверка: `sudo bash /opt/anamnes/deploy/check-production.sh`
 5. SSL: при ошибке Chrome `NET::ERR_CERT_COMMON_NAME_INVALID` → `sudo bash /opt/anamnes/deploy/fix-ssl-cert.sh`
 

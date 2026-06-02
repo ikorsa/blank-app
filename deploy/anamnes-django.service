@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# User/Group are replaced by switch-to-django-only.sh (owner of /opt/anamnes or ANAMNES_USER)
 User=anamnes
 Group=anamnes
 WorkingDirectory=/opt/anamnes
