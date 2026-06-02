@@ -13,7 +13,14 @@ FAIL=0
 warn() { echo "WARN: $*"; FAIL=1; }
 ok() { echo "OK: $*"; }
 
-echo "=== Anamnes production check (${DOMAIN}) ==="
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-app-user.sh
+source "${SCRIPT_DIR}/lib-app-user.sh"
+if APP_USER="$(resolve_anamnes_app_user "${ANAMNES_ROOT}" 2>/dev/null)"; then
+  echo "=== Anamnes production check (${DOMAIN}), app user: ${APP_USER} ==="
+else
+  echo "=== Anamnes production check (${DOMAIN}) ==="
+fi
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   warn "Missing ${ENV_FILE}"
