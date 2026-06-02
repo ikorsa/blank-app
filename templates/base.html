@@ -98,17 +98,17 @@
       .urgent-warning { color: #8a4b00; font-size: 13px; margin: 10px 0 0; }
       .urgent-note { margin: 0 0 10px; }
       .bmi-hint { margin: 8px 0 0; }
-      .password-wrap { display: flex; gap: 8px; align-items: stretch; }
+      .password-wrap { display: flex; gap: 8px; align-items: center; }
       .password-wrap input { flex: 1; min-width: 0; }
       .password-toggle {
         flex-shrink: 0;
-        align-self: stretch;
         padding: 8px 12px;
         border-radius: 8px;
         border: 1px solid #ccc;
         background: #f1f3f5;
         color: #111;
         font-size: 14px;
+        line-height: 1.2;
         cursor: pointer;
         white-space: nowrap;
       }
@@ -134,27 +134,26 @@
     </div>
     <script>
       (function () {
-        function enhancePasswordField(input) {
-          if (!input || input.dataset.passwordToggle === "1") return;
-          input.dataset.passwordToggle = "1";
-          const wrap = document.createElement("div");
-          wrap.className = "password-wrap";
-          input.parentNode.insertBefore(wrap, input);
-          wrap.appendChild(input);
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "password-toggle";
-          btn.setAttribute("aria-label", "Показать пароль");
-          btn.textContent = "Показать";
-          btn.addEventListener("click", function () {
-            const visible = input.type === "text";
-            input.type = visible ? "password" : "text";
-            btn.textContent = visible ? "Показать" : "Скрыть";
-            btn.setAttribute("aria-label", visible ? "Показать пароль" : "Скрыть пароль");
+        document.querySelectorAll(".password-wrap").forEach(function (wrap) {
+          const input = wrap.querySelector("input");
+          const btn = wrap.querySelector(".password-toggle");
+          if (!input || !btn || btn.dataset.bound === "1") return;
+          btn.dataset.bound = "1";
+
+          btn.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const hidden = input.getAttribute("type") === "password";
+            const value = input.value;
+            input.setAttribute("type", hidden ? "text" : "password");
+            input.value = value;
+
+            btn.textContent = hidden ? "Скрыть" : "Показать";
+            btn.setAttribute("aria-label", hidden ? "Скрыть пароль" : "Показать пароль");
+            btn.setAttribute("aria-pressed", hidden ? "true" : "false");
           });
-          wrap.appendChild(btn);
-        }
-        document.querySelectorAll('input[type="password"]').forEach(enhancePasswordField);
+        });
       })();
     </script>
   </body>
