@@ -82,11 +82,13 @@ class SubmissionDoctorForm(forms.ModelForm):
 class DoctorAdminForm(forms.ModelForm):
     class Meta:
         model = Doctor
-        fields = ["slug", "name", "specialty", "password", "is_active"]
+        fields = ["slug", "name", "specialty", "email", "telegram_chat_id", "password", "is_active"]
         labels = {
             "slug": "Код врача (slug)",
             "name": "ФИО",
             "specialty": "Специальность",
+            "email": "Email",
+            "telegram_chat_id": "Telegram chat_id",
             "password": "Пароль кабинета",
             "is_active": "Активен",
         }

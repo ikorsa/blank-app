@@ -5,7 +5,7 @@ from .models import Doctor, Draft, Submission, SubmissionFile
 
 @admin.register(Doctor)
 class DoctorAdmin(admin.ModelAdmin):
-    list_display = ("slug", "name", "specialty", "is_active")
+    list_display = ("slug", "name", "specialty", "email", "is_active")
     search_fields = ("slug", "name")
 
 

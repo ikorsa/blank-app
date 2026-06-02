@@ -22,6 +22,8 @@ class Command(BaseCommand):
             defaults = {
                 "name": str(item.get("name") or slug),
                 "specialty": str(item.get("specialty") or "Эндокринолог"),
+                "email": str(item.get("email") or ""),
+                "telegram_chat_id": str(item.get("telegram_chat_id") or ""),
                 "password": str(item.get("password") or ""),
                 "is_active": str(item.get("is_active", "true")).lower() not in {"false", "0", "no"},
             }

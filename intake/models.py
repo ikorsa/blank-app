@@ -18,6 +18,8 @@ class Doctor(models.Model):
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=255)
     specialty = models.CharField(max_length=255, default="Эндокринолог")
+    email = models.EmailField(blank=True, default="")
+    telegram_chat_id = models.CharField(max_length=64, blank=True, default="")
     password = models.CharField(max_length=255, blank=True, default="")
     is_active = models.BooleanField(default=True)
 

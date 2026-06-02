@@ -35,6 +35,7 @@
         <th style="text-align:left; padding:8px 4px;">Slug</th>
         <th style="text-align:left; padding:8px 4px;">ФИО</th>
         <th style="text-align:left; padding:8px 4px;">Специальность</th>
+        <th style="text-align:left; padding:8px 4px;">Email</th>
         <th style="text-align:left; padding:8px 4px;">Активен</th>
         <th style="text-align:left; padding:8px 4px;">Ссылка пациента</th>
         <th style="text-align:left; padding:8px 4px;">Действие</th>
@@ -46,6 +47,7 @@
           <td style="padding:8px 4px;">{{ doc.slug }}</td>
           <td style="padding:8px 4px;">{{ doc.name }}</td>
           <td style="padding:8px 4px;">{{ doc.specialty }}</td>
+          <td style="padding:8px 4px;">{{ doc.email|default:"—" }}</td>
           <td style="padding:8px 4px;">{{ doc.is_active|yesno:"Да,Нет" }}</td>
           <td style="padding:8px 4px;">
             <code>{{ doc.patient_link }}</code>
