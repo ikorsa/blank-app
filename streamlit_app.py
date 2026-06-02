@@ -1404,16 +1404,17 @@ def render_patient_form() -> None:
 
     if step == 1:
         st.subheader("Шаг 1. О вас")
+        st.caption("Поля, отмеченные *, обязательны.")
         col1, col2 = st.columns(2)
         with col1:
-            st.text_input("ФИО", key="patient_full_name")
-            st.number_input("Возраст", min_value=0, max_value=120, step=1, key="patient_age")
-            sex = st.selectbox("Пол", ["Женский", "Мужской"], key="patient_sex")
-            st.text_input("Телефон для связи", key="patient_phone", placeholder="+7 ...")
+            st.text_input("ФИО *", key="patient_full_name")
+            st.number_input("Возраст *", min_value=0, max_value=120, step=1, key="patient_age")
+            sex = st.selectbox("Пол *", ["Женский", "Мужской"], key="patient_sex")
+            st.text_input("Телефон для связи *", key="patient_phone", placeholder="+7 ...")
         with col2:
-            st.text_input("Город", key="patient_city")
-            st.number_input("Рост, см", min_value=0, max_value=250, step=1, key="patient_height")
-            st.number_input("Вес, кг", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
+            st.text_input("Город *", key="patient_city")
+            st.number_input("Рост, см *", min_value=0, max_value=250, step=1, key="patient_height")
+            st.number_input("Вес, кг *", min_value=0.0, max_value=400.0, step=0.5, key="patient_weight")
         if st.session_state.get("patient_sex") == "Женский":
             st.selectbox(
                 "Беременность / лактация",
@@ -1425,23 +1426,23 @@ def render_patient_form() -> None:
         st.caption("При острых симптомах — скорая помощь, не эта анкета.")
         back, nxt = render_nav(back=False)
         if nxt:
-            step1_errors: list[str] = []
+            missing_fields: list[str] = []
             if not str(st.session_state.get("patient_full_name", "")).strip():
-                step1_errors.append("Укажите ФИО.")
+                missing_fields.append("ФИО")
             if int(st.session_state.get("patient_age") or 0) <= 0:
-                step1_errors.append("Укажите корректный возраст.")
+                missing_fields.append("Возраст")
             if not str(st.session_state.get("patient_phone", "")).strip():
-                step1_errors.append("Укажите телефон для связи.")
+                missing_fields.append("Телефон для связи")
             if not str(st.session_state.get("patient_city", "")).strip():
-                step1_errors.append("Укажите город.")
+                missing_fields.append("Город")
             if int(st.session_state.get("patient_height") or 0) <= 0:
-                step1_errors.append("Укажите рост.")
+                missing_fields.append("Рост")
             if float(st.session_state.get("patient_weight") or 0.0) <= 0:
-                step1_errors.append("Укажите вес.")
+                missing_fields.append("Вес")
 
-            if step1_errors:
-                for error in step1_errors:
-                    st.error(error)
+            if missing_fields:
+                formatted = "\n".join([f"- {field}" for field in missing_fields])
+                st.error(f"Заполните обязательные поля:\n{formatted}")
             else:
                 st.session_state.patient_wizard_step = 2
                 st.rerun()
