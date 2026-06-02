@@ -75,6 +75,12 @@ chmod +x scripts/update_vps.sh
 ./scripts/update_vps.sh main
 ```
 
+Для Django-контура:
+
+```bash
+APP_MODE=django APP_SERVICE=anamnes-django ./scripts/update_vps.sh main
+```
+
 Если хотите обновлять VPS с Windows одной командой:
 
 ```bat

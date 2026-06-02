@@ -148,3 +148,59 @@ sudo -n /usr/bin/systemctl restart anamnes anamnes-bot
 
 - На ПК **не запускайте** `telegram_bot.py` с тем же токеном, что на сервере (ошибка 409).
 - Медицинские данные: только **HTTPS**, сильные пароли, бэкапы `data/`.
+
+---
+
+## Django-контур (надёжный режим, вместо Streamlit)
+
+Ниже минимальные шаги переключения на Django + gunicorn.
+
+### 1) Установить зависимости и миграции
+
+```bash
+cd /opt/anamnes
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+```
+
+### 2) Включить systemd-сервис Django
+
+```bash
+sudo cp /opt/anamnes/deploy/anamnes-django.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable anamnes-django
+sudo systemctl restart anamnes-django
+sudo systemctl status anamnes-django --no-pager -l
+```
+
+### 3) Переключить Nginx на Django
+
+```bash
+sudo cp /opt/anamnes/deploy/nginx-anamnes-django.conf.example /etc/nginx/sites-available/anamnes
+sudo ln -sf /etc/nginx/sites-available/anamnes /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Если HTTPS ещё не выпускали:
+
+```bash
+sudo certbot --nginx -d anamnes.ikorsakov.tech
+```
+
+### 4) Остановить старый Streamlit-сервис (после проверки)
+
+```bash
+sudo systemctl stop anamnes
+sudo systemctl disable anamnes
+```
+
+### 5) Быстрый rollback
+
+```bash
+sudo systemctl stop anamnes-django
+sudo systemctl disable anamnes-django
+sudo systemctl enable anamnes
+sudo systemctl restart anamnes
+```

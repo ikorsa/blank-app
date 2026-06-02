@@ -13,6 +13,7 @@ VENV_PATH="${VENV_PATH:-$APP_DIR/.venv/bin/activate}"
 APP_SERVICE="${APP_SERVICE:-anamnes}"
 BOT_SERVICE="${BOT_SERVICE:-anamnes-bot}"
 RESTART_BOT="${RESTART_BOT:-1}"
+APP_MODE="${APP_MODE:-streamlit}" # streamlit | django
 
 echo "==> Deploy branch: $BRANCH"
 echo "==> App dir: $APP_DIR"
@@ -31,6 +32,11 @@ else
 fi
 
 pip install -r requirements.txt
+if [[ "$APP_MODE" == "django" ]]; then
+  python manage.py migrate --noinput
+  python manage.py collectstatic --noinput || true
+fi
+
 sudo systemctl restart "$APP_SERVICE"
 sudo systemctl status "$APP_SERVICE" --no-pager -l | sed -n '1,25p'
 
