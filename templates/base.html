@@ -65,11 +65,35 @@
       .checkbox-grid input[type="checkbox"] { width: auto; min-width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
       .choice-list > ul,
       .field.choice-list ul { list-style: none; padding: 0; margin: 0; }
+      .field.choice-list > div[id] > div { margin-bottom: 10px; }
+      .field.choice-list > div[id] > div:last-child { margin-bottom: 0; }
+      .choice-list li,
+      .field.choice-list > div[id] > div { display: block; }
+      .choice-list li label,
+      .field.choice-list > div[id] > div > label {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 400;
+        margin: 0;
+        line-height: 1.4;
+        cursor: pointer;
+        vertical-align: middle;
+      }
       .choice-list li { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
       .choice-list li:last-child { margin-bottom: 0; }
-      .choice-list li label { display: flex; align-items: center; gap: 10px; font-weight: 400; margin: 0; line-height: 1.4; cursor: pointer; flex: 1; }
       .choice-list input[type="checkbox"],
-      .choice-list input[type="radio"] { width: auto; min-width: 18px; height: 18px; margin: 0; padding: 0; flex-shrink: 0; }
+      .choice-list input[type="radio"],
+      .field.choice-list input[type="checkbox"],
+      .field.choice-list input[type="radio"] {
+        width: 18px;
+        height: 18px;
+        min-width: 18px;
+        margin: 0;
+        padding: 0;
+        flex-shrink: 0;
+        vertical-align: middle;
+      }
       .urgent-panel { background: #fffaf0; border-color: #f0dfbf; }
       .urgent-warning { color: #8a4b00; font-size: 13px; margin: 10px 0 0; }
       .urgent-note { margin: 0 0 10px; }

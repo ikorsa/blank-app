@@ -10,7 +10,7 @@
   <form method="post">
     {% csrf_token %}
     {% for field in form %}
-      <div class="field choice-list">
+      <div class="field{% if field.widget_type == 'checkboxselectmultiple' %} choice-list{% endif %}">
         {{ field.label_tag }}
         {{ field }}
         {{ field.errors }}

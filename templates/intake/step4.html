@@ -22,7 +22,7 @@
       <fieldset class="branch-section">
         <legend>{{ section.label }}</legend>
         {% for field in section.fields %}
-          <div class="field">
+          <div class="field{% if field.widget_type == 'checkboxselectmultiple' %} choice-list{% endif %}">
             {{ field.label_tag }}
             {{ field }}
             {{ field.errors }}
