@@ -848,8 +848,12 @@ def collect_branch_from_session(reasons: list[str], sex: str) -> dict[str, Any]:
 def get_selected_reasons() -> list[str]:
     current = st.session_state.get("main_reasons")
     if isinstance(current, list) and current:
+        st.session_state["wizard_main_reasons_persist"] = list(current)
         st.session_state["wizard_main_reasons_snapshot"] = list(current)
         return current
+    persisted = st.session_state.get("wizard_main_reasons_persist")
+    if isinstance(persisted, list) and persisted:
+        return persisted
     snapshot = st.session_state.get("wizard_main_reasons_snapshot")
     if isinstance(snapshot, list) and snapshot:
         return snapshot
@@ -894,6 +898,9 @@ def resolve_selected_reasons_for_save() -> list[str]:
     reasons = get_selected_reasons()
     if reasons:
         return reasons
+    persisted = st.session_state.get("wizard_main_reasons_persist")
+    if isinstance(persisted, list) and persisted:
+        return persisted
     active_draft_id = st.session_state.get("active_draft_id")
     if active_draft_id:
         existing = load_draft(str(active_draft_id)) or {}
@@ -913,6 +920,14 @@ def resolve_selected_reasons_for_save() -> list[str]:
         st.session_state["wizard_main_reasons_snapshot"] = inferred_reasons
         return inferred_reasons
     return []
+
+
+def on_main_reasons_change() -> None:
+    current = st.session_state.get("main_reasons")
+    if isinstance(current, list):
+        st.session_state["wizard_main_reasons_persist"] = list(current)
+        if current:
+            st.session_state["wizard_main_reasons_snapshot"] = list(current)
 
 
 def hydrate_patient_state_from_snapshot() -> None:
@@ -1082,8 +1097,10 @@ def apply_draft_to_session(draft: dict[str, Any]) -> None:
 
     urgent = draft.get("urgent_symptoms") or []
     st.session_state["urgent_symptoms"] = urgent if urgent else [NO_URGENT_SYMPTOMS]
-    st.session_state["main_reasons"] = draft.get("main_reasons") or []
-    st.session_state["wizard_main_reasons_snapshot"] = list(draft.get("main_reasons") or [])
+    draft_reasons = list(draft.get("main_reasons") or [])
+    st.session_state["main_reasons"] = draft_reasons
+    st.session_state["wizard_main_reasons_snapshot"] = draft_reasons
+    st.session_state["wizard_main_reasons_persist"] = draft_reasons
     st.session_state["additional_comment"] = draft.get("additional_comment", "")
     st.session_state["wizard_patient_snapshot"] = {
         "patient_full_name": st.session_state.get("patient_full_name", ""),
@@ -1569,19 +1586,24 @@ def render_patient_form() -> None:
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
         snapshot_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        persisted_reasons = list(st.session_state.get("wizard_main_reasons_persist") or [])
         current_reasons = st.session_state.get("main_reasons")
-        if not isinstance(current_reasons, list) or (not current_reasons and snapshot_reasons):
-            st.session_state["main_reasons"] = snapshot_reasons
+        baseline_reasons = persisted_reasons or snapshot_reasons
+        if not isinstance(current_reasons, list) or (not current_reasons and baseline_reasons):
+            st.session_state["main_reasons"] = baseline_reasons
         prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         st.multiselect(
             "Что является причиной обращения? Можно выбрать несколько.",
             list(MAIN_REASONS.keys()),
             format_func=lambda reason: MAIN_REASONS[reason],
             key="main_reasons",
+            on_change=on_main_reasons_change,
         )
         # Не затираем snapshot пустым списком на промежуточных rerun:
         # иначе выбранная причина может потеряться при сохранении черновика.
         current_reasons_after_render = st.session_state.get("main_reasons")
+        if isinstance(current_reasons_after_render, list):
+            st.session_state["wizard_main_reasons_persist"] = list(current_reasons_after_render)
         if isinstance(current_reasons_after_render, list) and current_reasons_after_render:
             st.session_state["wizard_main_reasons_snapshot"] = list(current_reasons_after_render)
         selected = get_selected_reasons()
