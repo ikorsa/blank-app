@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Проверка данных{% endblock %}
 {% block content %}
-  <h1>Шаг 5. Проверка и отправка</h1>
+  <h1>Шаг 6. Проверка и отправка</h1>
   <p class="muted">Проверьте данные перед отправкой врачу.</p>
+  {% if urgent_labels %}
+    <div class="msg warning">
+      Отмечены срочные симптомы: {{ urgent_labels|join:", " }}.
+      При острых состояниях обратитесь за неотложной помощью.
+    </div>
+  {% endif %}
   {% if draft %}
     <p class="muted">Черновик: {{ draft.id }}</p>
   {% endif %}
-  <pre class="draft-link">{{ data|safe }}</pre>
+  <pre class="draft-link">{{ summary_text }}</pre>
   {% if uploaded_names %}
-    <p class="muted">Файлы, выбранные на шаге 4:</p>
+    <p class="muted">Файлы, выбранные на шаге 5:</p>
     <ul>
       {% for item in uploaded_names %}
         <li>{{ item }}</li>
@@ -19,10 +25,10 @@
     {% csrf_token %}
     <div class="field">
       <label for="submit-files">При необходимости приложите файлы повторно перед отправкой</label>
-      <input id="submit-files" type="file" name="files" multiple />
+      <input id="submit-files" type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png" />
     </div>
     <div class="actions">
-      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step4' %}{{ query_suffix }}">Назад</a>
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step5' %}{{ query_suffix }}">Назад</a>
       <button class="primary" type="submit">Отправить врачу</button>
     </div>
   </form>

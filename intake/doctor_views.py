@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from .forms import DoctorAdminForm, DoctorLoginForm, SubmissionDoctorForm
 from .models import Doctor, Submission
-from .summary import build_submission_summary, patient_name, reason_labels
+from .summary import build_submission_summary_from_model, patient_name, reason_labels
 
 SESSION_ROLE = "dc_role"
 SESSION_SLUG = "dc_slug"
@@ -161,7 +161,7 @@ def doctor_submission_detail(request: HttpRequest, submission_id) -> HttpRespons
             "auth": auth,
             "submission": submission,
             "form": form,
-            "summary_text": build_submission_summary(submission),
+            "summary_text": build_submission_summary_from_model(submission),
             "data_json": json.dumps(data, ensure_ascii=False, indent=2),
         },
     )
@@ -170,7 +170,7 @@ def doctor_submission_detail(request: HttpRequest, submission_id) -> HttpRespons
 @doctor_login_required
 def doctor_submission_summary_txt(request: HttpRequest, submission_id) -> HttpResponse:
     submission = get_object_or_404(_submissions_for_user(request), id=submission_id)
-    content = build_submission_summary(submission)
+    content = build_submission_summary_from_model(submission)
     response = HttpResponse(content, content_type="text/plain; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="summary_{submission.id}.txt"'
     return response

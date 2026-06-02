@@ -9,7 +9,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from .forms import Step1Form, Step2Form, Step3Form, Step4Form
+from .branch_forms import BranchForm
+from .forms import Step1Form, Step2Form, Step3Form, Step5Form, URGENT_SYMPTOM_CHOICES
 from .models import Doctor, Draft, Submission, SubmissionFile
 
 SESSION_KEY = "intake_wizard_data"
@@ -96,6 +97,43 @@ def _query_suffix(doctor: Doctor | None, draft: Draft | None = None) -> str:
     if draft:
         suffix += f"&draft={draft.id}"
     return suffix
+
+
+def _step_dict(data: dict[str, Any], key: str) -> dict[str, Any]:
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _selected_reasons(data: dict[str, Any]) -> list[str]:
+    reasons = _step_dict(data, "step2").get("main_reasons")
+    return list(reasons) if isinstance(reasons, list) else []
+
+
+def _patient_sex(data: dict[str, Any]) -> str:
+    sex = _step_dict(data, "step1").get("sex")
+    return str(sex) if sex in {"female", "male"} else "female"
+
+
+def _files_step_data(data: dict[str, Any]) -> dict[str, Any]:
+    step5 = _step_dict(data, "step5")
+    if step5:
+        return step5
+    step4 = _step_dict(data, "step4")
+    if "additional_comment" in step4 or "files" in step4:
+        return step4
+    return {}
+
+
+def _branch_step_data(data: dict[str, Any]) -> dict[str, Any]:
+    step4 = _step_dict(data, "step4")
+    if "additional_comment" in step4:
+        return {}
+    return step4
+
+
+def _urgent_symptom_labels(codes: list[str]) -> list[str]:
+    labels = dict(URGENT_SYMPTOM_CHOICES)
+    return [labels.get(code, code) for code in codes]
 
 
 def step1(request: HttpRequest) -> HttpResponse:
@@ -200,24 +238,78 @@ def step4(request: HttpRequest) -> HttpResponse:
     if not isinstance(data.get("step3"), dict):
         messages.warning(request, "Сначала заполните шаг 3.")
         return redirect(f"{reverse('intake:step3')}{_query_suffix(doctor, draft)}")
-    initial = data.get("step4", {}) if isinstance(data.get("step4"), dict) else {}
+
+    reasons = _selected_reasons(data)
+    if not reasons:
+        messages.warning(request, "Выберите причину обращения на шаге 2.")
+        return redirect(f"{reverse('intake:step2')}{_query_suffix(doctor, draft)}")
+
+    sex = _patient_sex(data)
+    branch_initial = _branch_step_data(data)
+
     if request.method == "POST":
         if request.POST.get("save_draft") == "1":
             draft = _save_draft(request, doctor)
             messages.success(request, f"Черновик сохранён: {_draft_link(request, doctor, draft)}")
             return redirect(_draft_link(request, doctor, draft))
-        form = Step4Form(request.POST, request.FILES)
+
+        form = BranchForm(reasons, sex, request.POST, branch_initial=branch_initial)
         if form.is_valid():
-            data["step4"] = {"additional_comment": form.cleaned_data.get("additional_comment", "")}
+            data["step4"] = form.to_branch_dict()
+            _save_wizard_data(request, data)
+            return redirect(f"{reverse('intake:step5')}{_query_suffix(doctor, draft)}")
+    else:
+        form = BranchForm(reasons, sex, branch_initial=branch_initial)
+
+    urgent = _step_dict(data, "step1").get("urgent_symptoms") or []
+    urgent_labels = _urgent_symptom_labels(list(urgent)) if isinstance(urgent, list) else []
+
+    return render(
+        request,
+        "intake/step4.html",
+        {
+            "form": form,
+            "sections": form.sections(),
+            "doctor": doctor,
+            "draft": draft,
+            "query_suffix": _query_suffix(doctor, draft),
+            "urgent_labels": urgent_labels,
+        },
+    )
+
+
+def step5(request: HttpRequest) -> HttpResponse:
+    doctor = _doctor_from_query(request)
+    draft = _load_draft_to_session(request, doctor)
+    data = _wizard_data(request)
+    if not _branch_step_data(data) and not _files_step_data(data):
+        if not isinstance(data.get("step3"), dict):
+            messages.warning(request, "Сначала заполните шаг 3.")
+            return redirect(f"{reverse('intake:step3')}{_query_suffix(doctor, draft)}")
+        if not _selected_reasons(data):
+            messages.warning(request, "Выберите причину обращения на шаге 2.")
+            return redirect(f"{reverse('intake:step2')}{_query_suffix(doctor, draft)}")
+        messages.warning(request, "Сначала заполните профильные блоки на шаге 4.")
+        return redirect(f"{reverse('intake:step4')}{_query_suffix(doctor, draft)}")
+
+    initial = _files_step_data(data)
+    if request.method == "POST":
+        if request.POST.get("save_draft") == "1":
+            draft = _save_draft(request, doctor)
+            messages.success(request, f"Черновик сохранён: {_draft_link(request, doctor, draft)}")
+            return redirect(_draft_link(request, doctor, draft))
+        form = Step5Form(request.POST, request.FILES)
+        if form.is_valid():
+            data["step5"] = {"additional_comment": form.cleaned_data.get("additional_comment", "")}
             _save_wizard_data(request, data)
             request.session["uploaded_file_names"] = [file.name for file in request.FILES.getlist("files")]
             request.session.modified = True
             return redirect(f"{reverse('intake:summary')}{_query_suffix(doctor, draft)}")
     else:
-        form = Step4Form(initial=initial)
+        form = Step5Form(initial=initial)
     return render(
         request,
-        "intake/step4.html",
+        "intake/step5.html",
         {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft)},
     )
 
@@ -226,9 +318,15 @@ def summary(request: HttpRequest) -> HttpResponse:
     doctor = _doctor_from_query(request)
     draft = _load_draft_to_session(request, doctor)
     data = _wizard_data(request)
-    if not isinstance(data.get("step4"), dict):
-        messages.warning(request, "Сначала заполните шаг 4.")
-        return redirect(f"{reverse('intake:step4')}{_query_suffix(doctor, draft)}")
+    if not _files_step_data(data):
+        messages.warning(request, "Сначала заполните шаг 5.")
+        return redirect(f"{reverse('intake:step5')}{_query_suffix(doctor, draft)}")
+
+    from .summary import build_submission_summary
+
+    summary_text = build_submission_summary(data)
+    urgent = _step_dict(data, "step1").get("urgent_symptoms") or []
+    urgent_labels = _urgent_symptom_labels(list(urgent)) if isinstance(urgent, list) else []
 
     if request.method == "POST":
         submission = Submission.objects.create(doctor=doctor, data=data)
@@ -246,9 +344,11 @@ def summary(request: HttpRequest) -> HttpResponse:
         "intake/summary.html",
         {
             "data": data,
+            "summary_text": summary_text,
             "doctor": doctor,
             "draft": draft,
             "uploaded_names": request.session.get("uploaded_file_names", []),
             "query_suffix": _query_suffix(doctor, draft),
+            "urgent_labels": urgent_labels,
         },
     )

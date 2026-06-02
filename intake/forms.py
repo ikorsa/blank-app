@@ -19,6 +19,26 @@ class MultipleFileField(forms.FileField):
         return [single_file_clean(data, initial)]
 
 
+URGENT_SYMPTOM_CHOICES = [
+    ("unconscious", "Потеря сознания"),
+    ("dyspnea", "Сильная одышка"),
+    ("chest_pain", "Боль в груди"),
+    ("sugar_gt20", "Сахар выше 20 ммоль/л"),
+    ("vomiting_diabetes", "Рвота и выраженная слабость при диабете"),
+    ("confusion", "Спутанность сознания"),
+]
+
+REPRODUCTIVE_STATUS_CHOICES = [
+    ("", "—"),
+    ("no", "Нет"),
+    ("pregnancy", "Беременность"),
+    ("lactation", "Лактация"),
+    ("planning", "Планирую беременность"),
+    ("menopause", "Менопауза"),
+    ("unknown", "Не знаю"),
+]
+
+
 class Step1Form(forms.Form):
     full_name = forms.CharField(label="ФИО", max_length=255)
     age = forms.IntegerField(label="Возраст", min_value=1, max_value=120)
@@ -27,6 +47,17 @@ class Step1Form(forms.Form):
     city = forms.CharField(label="Город", max_length=120)
     height_cm = forms.IntegerField(label="Рост, см", min_value=1, max_value=250)
     weight_kg = forms.DecimalField(label="Вес, кг", min_value=0.1, max_digits=6, decimal_places=1)
+    reproductive_status = forms.ChoiceField(
+        label="Беременность / лактация (для женского пола)",
+        choices=REPRODUCTIVE_STATUS_CHOICES,
+        required=False,
+    )
+    urgent_symptoms = forms.MultipleChoiceField(
+        label="Срочные симптомы (при острых — скорая помощь, не эта анкета)",
+        choices=URGENT_SYMPTOM_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
 
 
 class Step2Form(forms.Form):
@@ -138,7 +169,7 @@ class Step3Form(forms.Form):
     )
 
 
-class Step4Form(forms.Form):
+class Step5Form(forms.Form):
     additional_comment = forms.CharField(label="Комментарий для врача", widget=forms.Textarea, required=False)
     files = MultipleFileField(label="Файлы (PDF/JPG/PNG)", required=False)
 
