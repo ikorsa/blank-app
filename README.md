@@ -40,6 +40,20 @@ pip install -r requirements.txt
 sudo systemctl restart anamnes
 ```
 
+Или используйте готовый скрипт деплоя:
+
+```bash
+cd /opt/anamnes
+chmod +x scripts/update_vps.sh
+./scripts/update_vps.sh main
+```
+
+Если хотите обновлять VPS с Windows одной командой:
+
+```bat
+scripts\update_vps.bat user@your-vps-ip main
+```
+
 ## Переменные окружения
 
 ```bash
