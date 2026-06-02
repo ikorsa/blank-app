@@ -901,6 +901,17 @@ def resolve_selected_reasons_for_save() -> list[str]:
         if isinstance(existing_reasons, list) and existing_reasons:
             st.session_state["wizard_main_reasons_snapshot"] = list(existing_reasons)
             return existing_reasons
+    inferred_reasons: list[str] = []
+    for reason, mapping in BRANCH_SESSION_KEYS.items():
+        if reason == "other":
+            continue
+        for key in mapping.values():
+            if key in st.session_state and not _is_blank_value(st.session_state.get(key)):
+                inferred_reasons.append(reason)
+                break
+    if inferred_reasons:
+        st.session_state["wizard_main_reasons_snapshot"] = inferred_reasons
+        return inferred_reasons
     return []
 
 
@@ -1564,6 +1575,8 @@ def render_patient_form() -> None:
             format_func=lambda reason: MAIN_REASONS[reason],
             key="main_reasons",
         )
+        if isinstance(st.session_state.get("main_reasons"), list):
+            st.session_state["wizard_main_reasons_snapshot"] = list(st.session_state.get("main_reasons") or [])
         selected = get_selected_reasons()
         if prev_reasons and set(prev_reasons) != set(selected):
             st.warning("Вы изменили причину обращения — ответы в профильных блоках на следующем шаге нужно проверить заново.")
@@ -1745,6 +1758,9 @@ def render_patient_form() -> None:
             st.error("Врач не выбран — откройте страницу с ссылкой врача.")
         else:
             payload = build_patient_payload_from_session(assigned_doctor)
+            if step >= 2 and not payload.get("main_reasons"):
+                st.error("Нельзя сохранить черновик без причины обращения. Выберите причину на шаге 2.")
+                return
             uploaded_files = st.session_state.get("uploaded_files") or []
             current_draft_id = st.session_state.get("active_draft_id")
             draft_id = save_draft(payload, uploaded_files, draft_id=current_draft_id)
