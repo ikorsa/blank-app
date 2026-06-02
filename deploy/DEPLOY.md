@@ -163,6 +163,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
+python manage.py sync_doctors_from_legacy
 ```
 
 ### 2) Включить systemd-сервис Django
