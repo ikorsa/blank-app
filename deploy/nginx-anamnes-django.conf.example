@@ -1,4 +1,5 @@
-# /etc/nginx/sites-available/anamnes-django
+# /etc/nginx/sites-available/anamnes
+# After certbot: ssl_certificate lines must point to anamnes.ikorsakov.tech (see deploy/fix-ssl-cert.sh)
 
 server {
     listen 80;

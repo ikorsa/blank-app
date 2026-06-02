@@ -1,8 +1,28 @@
 # Деплой на VPS (anamnes.ikorsakov.tech)
 
-Стек: **Streamlit** (анкета) + **telegram_bot.py** (ссылки для пациентов) + **Nginx** + **HTTPS**.
+**Рекомендуемый стек:** **Django** (gunicorn `:8000`) + **Nginx** + **HTTPS** + **telegram_bot.py** (ссылки для пациентов).
 
-Данные MVP хранятся в `/opt/anamnes/data/` (JSON + файлы). PostgreSQL в этой ветке не требуется.
+Legacy **Streamlit** (`:9090`) — только для отката; после проверки отключите `anamnes.service`.
+
+Данные: SQLite/PostgreSQL (`ANAMNES_DATABASE_URL`) + файлы в `/opt/anamnes/media/`. JSON-legacy в `/opt/anamnes/data/` при миграции.
+
+## Быстрый чеклист продакшена (Django)
+
+1. Смержить PR в `main`, на VPS: `git pull origin main`.
+2. `/etc/anamnes.env` — скопировать из `deploy/anamnes.env.example`, задать `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS=anamnes.ikorsakov.tech`, `ANAMNES_ADMIN_PASSWORD`, SMTP.
+3. Один раз: `sudo bash /opt/anamnes/deploy/switch-to-django-only.sh`
+4. Проверка: `sudo bash /opt/anamnes/deploy/check-production.sh`
+5. SSL: при ошибке Chrome `NET::ERR_CERT_COMMON_NAME_INVALID` → `sudo bash /opt/anamnes/deploy/fix-ssl-cert.sh`
+
+Обновление после правок:
+
+```bash
+cd /opt/anamnes && sudo -u anamnes git pull
+sudo -u anamnes .venv/bin/pip install -r requirements.txt
+sudo -u anamnes .venv/bin/python manage.py migrate --noinput
+sudo -u anamnes .venv/bin/python manage.py collectstatic --noinput
+sudo systemctl restart anamnes-django
+```
 
 ## 1. Подготовка сервера (Ubuntu/Debian)
 
