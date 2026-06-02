@@ -1459,6 +1459,10 @@ def render_patient_form() -> None:
     sidebar_save_clicked = False
     with st.sidebar:
         st.subheader("Черновик")
+        if save_error := st.session_state.pop("draft_save_error", None):
+            st.error(save_error)
+        if save_ok := st.session_state.pop("draft_save_ok", None):
+            st.success(save_ok)
         current_draft_id = st.session_state.get("active_draft_id") or active_draft_id
         if current_draft_id:
             st.caption(f"Активный: {current_draft_id}")
@@ -1755,16 +1759,21 @@ def render_patient_form() -> None:
 
     if sidebar_save_clicked:
         if not assigned_doctor.get("id"):
-            st.error("Врач не выбран — откройте страницу с ссылкой врача.")
+            st.session_state["draft_save_error"] = "Врач не выбран — откройте страницу с ссылкой врача."
+            st.rerun()
         else:
             payload = build_patient_payload_from_session(assigned_doctor)
             if step >= 2 and not payload.get("main_reasons"):
-                st.error("Нельзя сохранить черновик без причины обращения. Выберите причину на шаге 2.")
+                st.session_state["draft_save_error"] = (
+                    "Нельзя сохранить черновик без причины обращения. Выберите причину на шаге 2."
+                )
+                st.rerun()
                 return
             uploaded_files = st.session_state.get("uploaded_files") or []
             current_draft_id = st.session_state.get("active_draft_id")
             draft_id = save_draft(payload, uploaded_files, draft_id=current_draft_id)
             st.query_params.from_dict({"doctor": assigned_doctor["id"], "draft": draft_id})
+            st.session_state["draft_save_ok"] = "Черновик сохранён."
             st.rerun()
 
 
