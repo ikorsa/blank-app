@@ -5,6 +5,7 @@ from typing import Any
 from .branch_fields import REASON_LABELS, format_branch_key
 from .forms import REPRODUCTIVE_STATUS_CHOICES, URGENT_SYMPTOM_CHOICES
 from .models import MAIN_REASONS, Submission
+from .wizard_files import pending_file_records
 
 REASON_LABELS.update(dict(MAIN_REASONS))
 
@@ -140,6 +141,7 @@ def build_submission_summary(data: dict[str, Any]) -> str:
         [
             "ФАЙЛЫ И КОММЕНТАРИИ",
             f"- Комментарий пациента: {_fmt(step5.get('additional_comment'))}",
+            f"- Файлов к отправке: {len(pending_file_records(data))}",
         ]
     )
     return "\n".join(lines)

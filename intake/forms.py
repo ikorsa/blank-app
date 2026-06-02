@@ -6,6 +6,12 @@ from .models import Doctor, MAIN_REASONS, Submission
 class MultipleFileInput(forms.ClearableFileInput):
     allow_multiple_selected = True
 
+    def __init__(self, attrs=None):
+        merged = {"multiple": True, "accept": ".pdf,.jpg,.jpeg,.png"}
+        if attrs:
+            merged.update(attrs)
+        super().__init__(attrs=merged)
+
 
 class MultipleFileField(forms.FileField):
     widget = MultipleFileInput

@@ -11,8 +11,16 @@ from django.urls import reverse
 
 from .branch_forms import BranchForm
 from .forms import Step1Form, Step2Form, Step3Form, Step5Form, URGENT_SYMPTOM_CHOICES
-from .models import Doctor, Draft, Submission, SubmissionFile
+from .models import Doctor, Draft, Submission
 from .wizard import WIZARD_STEPS, WIZARD_TOTAL
+from .wizard_files import (
+    attach_pending_files_to_submission,
+    clear_pending_uploads,
+    merge_pending_files,
+    pending_file_records,
+    save_uploads,
+    upload_bucket,
+)
 
 SESSION_KEY = "intake_wizard_data"
 
@@ -315,16 +323,43 @@ def step5(request: HttpRequest) -> HttpResponse:
         form = Step5Form(request.POST, request.FILES)
         if form.is_valid():
             data["step5"] = {"additional_comment": form.cleaned_data.get("additional_comment", "")}
+            bucket = upload_bucket(request, draft)
+            uploaded = request.FILES.getlist("files")
+            if uploaded:
+                saved, file_errors = save_uploads(bucket, uploaded)
+                data["pending_files"] = merge_pending_files(data.get("pending_files"), saved)
+                for err in file_errors:
+                    messages.warning(request, err)
             _save_wizard_data(request, data)
-            request.session["uploaded_file_names"] = [file.name for file in request.FILES.getlist("files")]
+            if draft:
+                draft.data = data
+                draft.save(update_fields=["data", "updated_at"])
+            pending_names = [
+                str(item.get("original_name"))
+                for item in pending_file_records(data)
+                if isinstance(item, dict) and item.get("original_name")
+            ]
+            request.session["uploaded_file_names"] = pending_names
             request.session.modified = True
             return redirect(f"{reverse('intake:summary')}{_query_suffix(doctor, draft)}")
     else:
         form = Step5Form(initial=initial)
+    pending_names = [
+        str(item.get("original_name"))
+        for item in pending_file_records(data)
+        if isinstance(item, dict) and item.get("original_name")
+    ]
     return render(
         request,
         "intake/step5.html",
-        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft), **_wizard_context(5)},
+        {
+            "form": form,
+            "doctor": doctor,
+            "draft": draft,
+            "query_suffix": _query_suffix(doctor, draft),
+            "pending_file_names": pending_names,
+            **_wizard_context(5),
+        },
     )
 
 
@@ -343,9 +378,19 @@ def summary(request: HttpRequest) -> HttpResponse:
     urgent_labels = _urgent_symptom_labels(list(urgent)) if isinstance(urgent, list) else []
 
     if request.method == "POST":
+        bucket = upload_bucket(request, draft)
         submission = Submission.objects.create(doctor=doctor, data=data)
-        for uploaded in request.FILES.getlist("files"):
-            SubmissionFile.objects.create(submission=submission, file=uploaded)
+        file_count, file_errors = attach_pending_files_to_submission(
+            submission,
+            bucket,
+            pending_file_records(data),
+            extra_uploads=request.FILES.getlist("files"),
+        )
+        for err in file_errors:
+            messages.warning(request, err)
+        clear_pending_uploads(bucket)
+        clear_pending_uploads(f"submission_{submission.id}")
+
         request.session.pop(SESSION_KEY, None)
         request.session.pop("uploaded_file_names", None)
         if draft:
@@ -368,6 +413,8 @@ def summary(request: HttpRequest) -> HttpResponse:
             )
 
         messages.success(request, f"Анкета отправлена. ID: {submission.id}")
+        if file_count:
+            messages.success(request, f"Прикреплено файлов: {file_count}.")
         return redirect(reverse("intake:step1"))
 
     return render(
@@ -378,7 +425,12 @@ def summary(request: HttpRequest) -> HttpResponse:
             "summary_text": summary_text,
             "doctor": doctor,
             "draft": draft,
-            "uploaded_names": request.session.get("uploaded_file_names", []),
+            "uploaded_names": request.session.get("uploaded_file_names", [])
+            or [
+                str(item.get("original_name"))
+                for item in pending_file_records(data)
+                if isinstance(item, dict) and item.get("original_name")
+            ],
             "query_suffix": _query_suffix(doctor, draft),
             "urgent_labels": urgent_labels,
             **_wizard_context(6),

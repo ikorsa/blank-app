@@ -3,7 +3,15 @@
 {% block content %}
   {% include "intake/_wizard_progress.html" %}
   <h1>Файлы и комментарий</h1>
-  <p class="muted">Приложите анализы, УЗИ, выписки (PDF, JPG, PNG). На следующем шаге можно приложить файлы повторно.</p>
+  <p class="muted">Приложите анализы, УЗИ, выписки (PDF, JPG, PNG). До 25 МБ на файл.</p>
+  {% if pending_file_names %}
+    <p class="muted">Уже выбрано для отправки:</p>
+    <ul>
+      {% for name in pending_file_names %}
+        <li>{{ name }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
   {% if draft %}
     <p class="muted">Черновик: {{ draft.id }}</p>
   {% endif %}

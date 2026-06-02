@@ -15,7 +15,7 @@
   {% endif %}
   <pre class="draft-link">{{ summary_text }}</pre>
   {% if uploaded_names %}
-    <p class="muted">Файлы, выбранные на шаге 5:</p>
+    <p class="muted">Будут отправлены вместе с анкетой:</p>
     <ul>
       {% for item in uploaded_names %}
         <li>{{ item }}</li>
@@ -25,7 +25,7 @@
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <div class="field">
-      <label for="submit-files">При необходимости приложите файлы повторно перед отправкой</label>
+      <label for="submit-files">Добавить ещё файлы (необязательно)</label>
       <input id="submit-files" type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png" />
     </div>
     <div class="actions">
