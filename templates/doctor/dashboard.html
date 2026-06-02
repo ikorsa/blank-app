@@ -4,6 +4,9 @@
   <h1>Кабинет врача</h1>
   <p class="muted">{{ auth.name }} · {{ auth.role }}</p>
   <div class="actions" style="margin-bottom:16px;">
+    {% if auth.role == "admin" %}
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:admin_panel' %}">Панель админ</a>
+    {% endif %}
     <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:doctor_logout' %}">Выйти</a>
   </div>
 

@@ -6,14 +6,14 @@ from typing import Callable
 from django.conf import settings
 import json
 
+from django.core.management import call_command
 from django.contrib import messages
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.utils import timezone
 
-from .forms import DoctorLoginForm, SubmissionDoctorForm
+from .forms import DoctorAdminForm, DoctorLoginForm, SubmissionDoctorForm
 from .models import Doctor, Submission
 from .summary import build_submission_summary, patient_name, reason_labels
 
@@ -35,6 +35,17 @@ def doctor_login_required(view_func: Callable) -> Callable:
     def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
         if not request.session.get(SESSION_ROLE):
             return redirect("intake:doctor_login")
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
+
+
+def admin_required(view_func: Callable) -> Callable:
+    @wraps(view_func)
+    def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        if request.session.get(SESSION_ROLE) != "admin":
+            messages.error(request, "Раздел доступен только администратору.")
+            return redirect("intake:doctor_dashboard")
         return view_func(request, *args, **kwargs)
 
     return wrapper
@@ -162,3 +173,53 @@ def doctor_submission_summary_txt(request: HttpRequest, submission_id) -> HttpRe
     response = HttpResponse(content, content_type="text/plain; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="summary_{submission.id}.txt"'
     return response
+
+
+@doctor_login_required
+@admin_required
+def admin_panel(request: HttpRequest) -> HttpResponse:
+    auth = _auth_context(request)
+    doctors = Doctor.objects.order_by("slug")
+
+    if request.method == "POST":
+        action = request.POST.get("action", "").strip()
+        if action == "sync":
+            call_command("sync_doctors_from_legacy")
+            messages.success(request, "Синхронизация врачей завершена.")
+            return redirect("intake:admin_panel")
+
+        slug = request.POST.get("slug", "").strip().lower()
+        if action == "edit" and slug:
+            doctor = get_object_or_404(Doctor, slug=slug)
+            form = DoctorAdminForm(request.POST, instance=doctor)
+            if form.is_valid():
+                form.save()
+                messages.success(request, f"Врач {slug} обновлён.")
+                return redirect("intake:admin_panel")
+        else:
+            form = DoctorAdminForm(request.POST)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Врач создан.")
+                return redirect("intake:admin_panel")
+    else:
+        form = DoctorAdminForm()
+
+    edit_slug = request.GET.get("edit", "").strip().lower()
+    edit_form = None
+    if edit_slug:
+        doctor = Doctor.objects.filter(slug=edit_slug).first()
+        if doctor:
+            edit_form = DoctorAdminForm(instance=doctor)
+
+    return render(
+        request,
+        "doctor/admin_panel.html",
+        {
+            "auth": auth,
+            "doctors": doctors,
+            "create_form": form,
+            "edit_slug": edit_slug,
+            "edit_form": edit_form,
+        },
+    )

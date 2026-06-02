@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import MAIN_REASONS, Submission
+from .models import Doctor, MAIN_REASONS, Submission
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -76,4 +76,17 @@ class SubmissionDoctorForm(forms.ModelForm):
             "appointment_date": "Дата приёма",
             "requested_documents": "Что попросить донести",
             "doctor_note": "Комментарий врача",
+        }
+
+
+class DoctorAdminForm(forms.ModelForm):
+    class Meta:
+        model = Doctor
+        fields = ["slug", "name", "specialty", "password", "is_active"]
+        labels = {
+            "slug": "Код врача (slug)",
+            "name": "ФИО",
+            "specialty": "Специальность",
+            "password": "Пароль кабинета",
+            "is_active": "Активен",
         }

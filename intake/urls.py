@@ -13,6 +13,7 @@ urlpatterns = [
     path("doctor/login/", doctor_views.doctor_login, name="doctor_login"),
     path("doctor/logout/", doctor_views.doctor_logout, name="doctor_logout"),
     path("doctor/", doctor_views.doctor_dashboard, name="doctor_dashboard"),
+    path("doctor/admin/", doctor_views.admin_panel, name="admin_panel"),
     path("doctor/submission/<uuid:submission_id>/", doctor_views.doctor_submission_detail, name="doctor_submission_detail"),
     path(
         "doctor/submission/<uuid:submission_id>/summary.txt",
