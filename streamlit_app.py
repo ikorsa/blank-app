@@ -1539,8 +1539,10 @@ def render_patient_form() -> None:
 
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
-        if "main_reasons" not in st.session_state:
-            st.session_state["main_reasons"] = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        snapshot_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
+        current_reasons = st.session_state.get("main_reasons")
+        if not isinstance(current_reasons, list) or (not current_reasons and snapshot_reasons):
+            st.session_state["main_reasons"] = snapshot_reasons
         prev_reasons = list(st.session_state.get("wizard_main_reasons_snapshot") or [])
         st.multiselect(
             "Что является причиной обращения? Можно выбрать несколько.",
