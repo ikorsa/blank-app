@@ -856,24 +856,58 @@ def get_selected_reasons() -> list[str]:
     return []
 
 
+def get_patient_field_value(field: str, default: Any = "") -> Any:
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    if field in st.session_state:
+        value = st.session_state.get(field)
+        snapshot[field] = value
+        st.session_state["wizard_patient_snapshot"] = snapshot
+        return value
+    if field in snapshot:
+        return snapshot[field]
+    return default
+
+
+def sync_patient_snapshot() -> None:
+    fields = (
+        "patient_full_name",
+        "patient_age",
+        "patient_sex",
+        "patient_phone",
+        "patient_city",
+        "patient_height",
+        "patient_weight",
+        "patient_reproductive_status",
+        "urgent_symptoms",
+    )
+    snapshot = st.session_state.get("wizard_patient_snapshot") or {}
+    changed = False
+    for field in fields:
+        if field in st.session_state:
+            snapshot[field] = st.session_state[field]
+            changed = True
+    if changed:
+        st.session_state["wizard_patient_snapshot"] = snapshot
+
+
 def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[str, Any]:
     """
     Собирает payload анкеты из текущего session_state.
     Используется для кнопки сохранения черновика с любого шага.
     """
-    full_name = str(st.session_state.get("patient_full_name", ""))
-    age = int(st.session_state.get("patient_age") or 0)
-    sex = str(st.session_state.get("patient_sex", "Женский"))
-    phone = str(st.session_state.get("patient_phone", ""))
-    city = str(st.session_state.get("patient_city", ""))
-    height_cm = int(st.session_state.get("patient_height") or 0)
-    weight_kg = float(st.session_state.get("patient_weight") or 0.0)
+    full_name = str(get_patient_field_value("patient_full_name", ""))
+    age = int(get_patient_field_value("patient_age", 0) or 0)
+    sex = str(get_patient_field_value("patient_sex", "Женский"))
+    phone = str(get_patient_field_value("patient_phone", ""))
+    city = str(get_patient_field_value("patient_city", ""))
+    height_cm = int(get_patient_field_value("patient_height", 0) or 0)
+    weight_kg = float(get_patient_field_value("patient_weight", 0.0) or 0.0)
 
     reproductive_status = (
-        st.session_state.get("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
+        get_patient_field_value("patient_reproductive_status", "Нет") if sex == "Женский" else "Не применимо"
     )
 
-    urgent_symptoms = st.session_state.get("urgent_symptoms") or [NO_URGENT_SYMPTOMS]
+    urgent_symptoms = get_patient_field_value("urgent_symptoms", [NO_URGENT_SYMPTOMS]) or [NO_URGENT_SYMPTOMS]
     selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
 
     selected_reasons = get_selected_reasons()
@@ -1015,7 +1049,19 @@ def apply_draft_to_session(draft: dict[str, Any]) -> None:
     urgent = draft.get("urgent_symptoms") or []
     st.session_state["urgent_symptoms"] = urgent if urgent else [NO_URGENT_SYMPTOMS]
     st.session_state["main_reasons"] = draft.get("main_reasons") or []
+    st.session_state["wizard_main_reasons_snapshot"] = list(draft.get("main_reasons") or [])
     st.session_state["additional_comment"] = draft.get("additional_comment", "")
+    st.session_state["wizard_patient_snapshot"] = {
+        "patient_full_name": st.session_state.get("patient_full_name", ""),
+        "patient_age": st.session_state.get("patient_age", 0),
+        "patient_sex": st.session_state.get("patient_sex", "Женский"),
+        "patient_phone": st.session_state.get("patient_phone", ""),
+        "patient_city": st.session_state.get("patient_city", ""),
+        "patient_height": st.session_state.get("patient_height", 0),
+        "patient_weight": st.session_state.get("patient_weight", 0.0),
+        "patient_reproductive_status": st.session_state.get("patient_reproductive_status", "Нет"),
+        "urgent_symptoms": st.session_state.get("urgent_symptoms", [NO_URGENT_SYMPTOMS]),
+    }
 
     common = draft.get("common") or {}
     for field, key in COMMON_SESSION_KEYS.items():
@@ -1373,6 +1419,7 @@ def render_patient_form() -> None:
     active_draft_id = init_draft_from_query()
     assigned_doctor = resolve_patient_doctor(doctors)
     init_wizard_state(skip_intro=bool(active_draft_id))
+    sync_patient_snapshot()
 
     sidebar_save_clicked = False
     with st.sidebar:
@@ -1476,6 +1523,7 @@ def render_patient_form() -> None:
                 formatted = "\n".join([f"- {field}" for field in missing_fields])
                 st.error(f"Заполните обязательные поля:\n{formatted}")
             else:
+                sync_patient_snapshot()
                 st.session_state.patient_wizard_step = 2
                 st.rerun()
 
