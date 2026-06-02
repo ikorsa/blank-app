@@ -1344,8 +1344,16 @@ def render_patient_form() -> None:
     sidebar_save_clicked = False
     with st.sidebar:
         st.subheader("Черновик")
-        if st.session_state.get("active_draft_id"):
-            st.caption(f"Активный: {st.session_state.get('active_draft_id')}")
+        current_draft_id = st.session_state.get("active_draft_id") or active_draft_id
+        if current_draft_id:
+            st.caption(f"Активный: {current_draft_id}")
+            st.markdown("**Ссылка для продолжения черновика:**")
+            st.text_input(
+                "Скопируйте и сохраните ссылку",
+                value=draft_resume_url(assigned_doctor["id"], current_draft_id),
+                disabled=True,
+                key="sidebar_draft_link",
+            )
         uploaded_files_count = len(st.session_state.get("uploaded_files") or [])
         st.caption(f"Файлы в черновик: {uploaded_files_count}")
         sidebar_save_clicked = st.button(
