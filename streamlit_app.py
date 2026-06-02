@@ -1425,8 +1425,26 @@ def render_patient_form() -> None:
         st.caption("При острых симптомах — скорая помощь, не эта анкета.")
         back, nxt = render_nav(back=False)
         if nxt:
-            st.session_state.patient_wizard_step = 2
-            st.rerun()
+            step1_errors: list[str] = []
+            if not str(st.session_state.get("patient_full_name", "")).strip():
+                step1_errors.append("Укажите ФИО.")
+            if int(st.session_state.get("patient_age") or 0) <= 0:
+                step1_errors.append("Укажите корректный возраст.")
+            if not str(st.session_state.get("patient_phone", "")).strip():
+                step1_errors.append("Укажите телефон для связи.")
+            if not str(st.session_state.get("patient_city", "")).strip():
+                step1_errors.append("Укажите город.")
+            if int(st.session_state.get("patient_height") or 0) <= 0:
+                step1_errors.append("Укажите рост.")
+            if float(st.session_state.get("patient_weight") or 0.0) <= 0:
+                step1_errors.append("Укажите вес.")
+
+            if step1_errors:
+                for error in step1_errors:
+                    st.error(error)
+            else:
+                st.session_state.patient_wizard_step = 2
+                st.rerun()
 
     elif step == 2:
         st.subheader("Шаг 2. Причина обращения")
