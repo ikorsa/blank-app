@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Шаг 2 — Причина обращения{% endblock %}
+{% block title %}Шаг 3 — Общий анамнез{% endblock %}
 {% block content %}
-  <h1>Шаг 2. Причина обращения</h1>
-  <p class="muted">Выберите минимум одну причину.</p>
+  <h1>Шаг 3. Общий анамнез</h1>
+  <p class="muted">Заполните базовые жалобы и препараты.</p>
   {% if draft %}
     <p class="muted">Черновик: {{ draft.id }}</p>
   {% endif %}
@@ -16,7 +16,7 @@
       </div>
     {% endfor %}
     <div class="actions">
-      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step1' %}{{ query_suffix }}">Назад</a>
+      <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step2' %}{{ query_suffix }}">Назад</a>
       <button class="primary" type="submit">Далее</button>
       <button class="secondary" type="submit" name="save_draft" value="1">Сохранить черновик</button>
     </div>

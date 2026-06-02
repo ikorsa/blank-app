@@ -5,11 +5,11 @@ from uuid import UUID
 
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from .forms import Step1Form, Step2Form
-from .models import Doctor, Draft
+from .forms import Step1Form, Step2Form, Step3Form, Step4Form
+from .models import Doctor, Draft, Submission, SubmissionFile
 
 SESSION_KEY = "intake_wizard_data"
 
@@ -79,6 +79,14 @@ def _draft_link(request: HttpRequest, doctor: Doctor | None, draft: Draft) -> st
     return f"{reverse('intake:step1')}?doctor={doctor_slug}&draft={draft.id}"
 
 
+def _query_suffix(doctor: Doctor | None, draft: Draft | None = None) -> str:
+    doctor_slug = doctor.slug if doctor else ""
+    suffix = f"?doctor={doctor_slug}"
+    if draft:
+        suffix += f"&draft={draft.id}"
+    return suffix
+
+
 def step1(request: HttpRequest) -> HttpResponse:
     doctor = _doctor_from_query(request)
     draft = _load_draft_to_session(request, doctor)
@@ -95,7 +103,7 @@ def step1(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             wizard_data["step1"] = form.cleaned_data
             _save_wizard_data(request, wizard_data)
-            return redirect(f"{reverse('intake:step2')}?doctor={doctor.slug if doctor else ''}")
+            return redirect(f"{reverse('intake:step2')}{_query_suffix(doctor, draft)}")
     else:
         form = Step1Form(initial=initial)
 
@@ -106,6 +114,7 @@ def step1(request: HttpRequest) -> HttpResponse:
             "form": form,
             "doctor": doctor,
             "draft": draft,
+            "query_suffix": _query_suffix(doctor, draft),
         },
     )
 
@@ -117,7 +126,7 @@ def step2(request: HttpRequest) -> HttpResponse:
     step1_data = wizard_data.get("step1")
     if not isinstance(step1_data, dict) or not step1_data:
         messages.warning(request, "Сначала заполните шаг 1.")
-        return redirect(f"{reverse('intake:step1')}?doctor={doctor.slug if doctor else ''}")
+        return redirect(f"{reverse('intake:step1')}{_query_suffix(doctor, draft)}")
 
     initial = wizard_data.get("step2", {}) if isinstance(wizard_data.get("step2"), dict) else {}
     if request.method == "POST":
@@ -130,7 +139,7 @@ def step2(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             wizard_data["step2"] = form.cleaned_data
             _save_wizard_data(request, wizard_data)
-            return redirect(reverse("intake:summary"))
+            return redirect(f"{reverse('intake:step3')}{_query_suffix(doctor, draft)}")
     else:
         form = Step2Form(initial=initial)
 
@@ -141,10 +150,94 @@ def step2(request: HttpRequest) -> HttpResponse:
             "form": form,
             "doctor": doctor,
             "draft": draft,
+            "query_suffix": _query_suffix(doctor, draft),
         },
     )
 
 
-def summary(request: HttpRequest) -> HttpResponse:
+def step3(request: HttpRequest) -> HttpResponse:
+    doctor = _doctor_from_query(request)
+    draft = _load_draft_to_session(request, doctor)
     data = _wizard_data(request)
-    return render(request, "intake/summary.html", {"data": data})
+    if not isinstance(data.get("step2"), dict):
+        messages.warning(request, "Сначала заполните шаг 2.")
+        return redirect(f"{reverse('intake:step2')}{_query_suffix(doctor, draft)}")
+    initial = data.get("step3", {}) if isinstance(data.get("step3"), dict) else {}
+    if request.method == "POST":
+        if request.POST.get("save_draft") == "1":
+            draft = _save_draft(request, doctor)
+            messages.success(request, f"Черновик сохранён: {_draft_link(request, doctor, draft)}")
+            return redirect(_draft_link(request, doctor, draft))
+        form = Step3Form(request.POST)
+        if form.is_valid():
+            data["step3"] = form.cleaned_data
+            _save_wizard_data(request, data)
+            return redirect(f"{reverse('intake:step4')}{_query_suffix(doctor, draft)}")
+    else:
+        form = Step3Form(initial=initial)
+    return render(
+        request,
+        "intake/step3.html",
+        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft)},
+    )
+
+
+def step4(request: HttpRequest) -> HttpResponse:
+    doctor = _doctor_from_query(request)
+    draft = _load_draft_to_session(request, doctor)
+    data = _wizard_data(request)
+    if not isinstance(data.get("step3"), dict):
+        messages.warning(request, "Сначала заполните шаг 3.")
+        return redirect(f"{reverse('intake:step3')}{_query_suffix(doctor, draft)}")
+    initial = data.get("step4", {}) if isinstance(data.get("step4"), dict) else {}
+    if request.method == "POST":
+        if request.POST.get("save_draft") == "1":
+            draft = _save_draft(request, doctor)
+            messages.success(request, f"Черновик сохранён: {_draft_link(request, doctor, draft)}")
+            return redirect(_draft_link(request, doctor, draft))
+        form = Step4Form(request.POST, request.FILES)
+        if form.is_valid():
+            data["step4"] = {"additional_comment": form.cleaned_data.get("additional_comment", "")}
+            _save_wizard_data(request, data)
+            request.session["uploaded_file_names"] = [file.name for file in request.FILES.getlist("files")]
+            request.session.modified = True
+            return redirect(f"{reverse('intake:summary')}{_query_suffix(doctor, draft)}")
+    else:
+        form = Step4Form(initial=initial)
+    return render(
+        request,
+        "intake/step4.html",
+        {"form": form, "doctor": doctor, "draft": draft, "query_suffix": _query_suffix(doctor, draft)},
+    )
+
+
+def summary(request: HttpRequest) -> HttpResponse:
+    doctor = _doctor_from_query(request)
+    draft = _load_draft_to_session(request, doctor)
+    data = _wizard_data(request)
+    if not isinstance(data.get("step4"), dict):
+        messages.warning(request, "Сначала заполните шаг 4.")
+        return redirect(f"{reverse('intake:step4')}{_query_suffix(doctor, draft)}")
+
+    if request.method == "POST":
+        submission = Submission.objects.create(doctor=doctor, data=data)
+        for uploaded in request.FILES.getlist("files"):
+            SubmissionFile.objects.create(submission=submission, file=uploaded)
+        request.session.pop(SESSION_KEY, None)
+        request.session.pop("uploaded_file_names", None)
+        if draft:
+            draft.delete()
+        messages.success(request, f"Анкета отправлена. ID: {submission.id}")
+        return redirect(reverse("intake:step1"))
+
+    return render(
+        request,
+        "intake/summary.html",
+        {
+            "data": data,
+            "doctor": doctor,
+            "draft": draft,
+            "uploaded_names": request.session.get("uploaded_file_names", []),
+            "query_suffix": _query_suffix(doctor, draft),
+        },
+    )

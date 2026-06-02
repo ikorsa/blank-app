@@ -36,3 +36,26 @@ class Draft(models.Model):
 
     def __str__(self) -> str:
         return f"Draft {self.id}"
+
+
+class Submission(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    doctor = models.ForeignKey(Doctor, on_delete=models.SET_NULL, null=True, blank=True)
+    data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Submission {self.id}"
+
+
+def submission_upload_path(instance: "SubmissionFile", filename: str) -> str:
+    return f"submissions/{instance.submission_id}/{filename}"
+
+
+class SubmissionFile(models.Model):
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="files")
+    file = models.FileField(upload_to=submission_upload_path)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
