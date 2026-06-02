@@ -1107,6 +1107,34 @@ def save_draft_files(
     return saved_files
 
 
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) == 0
+    if isinstance(value, (int, float)):
+        return value == 0
+    return False
+
+
+def _merge_prefer_filled(new_value: Any, old_value: Any) -> Any:
+    """
+    Не затираем заполненные поля старого черновика пустыми значениями.
+    """
+    if isinstance(new_value, dict) and isinstance(old_value, dict):
+        merged = dict(old_value)
+        for key, value in new_value.items():
+            merged[key] = _merge_prefer_filled(value, old_value.get(key))
+        return merged
+    if isinstance(new_value, list):
+        return new_value if new_value else (old_value if isinstance(old_value, list) else new_value)
+    if _is_blank_value(new_value):
+        return old_value
+    return new_value
+
+
 def save_draft(
     draft_payload: dict[str, Any],
     uploaded_files: list[Any],
@@ -1115,13 +1143,14 @@ def save_draft(
     init_storage()
     draft_id = safe_filename(draft_id or str(uuid.uuid4()))
     existing = load_draft(draft_id) or {}
+    payload = _merge_prefer_filled(draft_payload, existing) if existing else draft_payload
     remove_stored = set(st.session_state.get("draft_files_to_remove") or [])
     existing_files = existing.get("files", [])
     saved_files = save_draft_files(draft_id, uploaded_files, existing_files, remove_stored)
 
     now = now_iso()
     draft = {
-        **draft_payload,
+        **payload,
         "id": draft_id,
         "status": "draft",
         "created_at": existing.get("created_at", now),
