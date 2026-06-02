@@ -188,6 +188,18 @@ def admin_panel(request: HttpRequest) -> HttpResponse:
             messages.success(request, "Синхронизация врачей завершена.")
             return redirect("intake:admin_panel")
 
+        if action == "toggle_active":
+            slug = request.POST.get("slug", "").strip().lower()
+            doctor = Doctor.objects.filter(slug=slug).first()
+            if doctor:
+                doctor.is_active = not doctor.is_active
+                doctor.save(update_fields=["is_active"])
+                messages.success(
+                    request,
+                    f"Врач {doctor.slug}: {'активирован' if doctor.is_active else 'деактивирован'}.",
+                )
+            return redirect("intake:admin_panel")
+
         slug = request.POST.get("slug", "").strip().lower()
         if action == "edit" and slug:
             doctor = get_object_or_404(Doctor, slug=slug)
@@ -211,6 +223,9 @@ def admin_panel(request: HttpRequest) -> HttpResponse:
         doctor = Doctor.objects.filter(slug=edit_slug).first()
         if doctor:
             edit_form = DoctorAdminForm(instance=doctor)
+
+    for doctor in doctors:
+        doctor.patient_link = request.build_absolute_uri(f"{reverse('intake:step1')}?doctor={doctor.slug}")
 
     return render(
         request,

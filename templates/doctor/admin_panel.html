@@ -36,6 +36,7 @@
         <th style="text-align:left; padding:8px 4px;">ФИО</th>
         <th style="text-align:left; padding:8px 4px;">Специальность</th>
         <th style="text-align:left; padding:8px 4px;">Активен</th>
+        <th style="text-align:left; padding:8px 4px;">Ссылка пациента</th>
         <th style="text-align:left; padding:8px 4px;">Действие</th>
       </tr>
     </thead>
@@ -46,7 +47,20 @@
           <td style="padding:8px 4px;">{{ doc.name }}</td>
           <td style="padding:8px 4px;">{{ doc.specialty }}</td>
           <td style="padding:8px 4px;">{{ doc.is_active|yesno:"Да,Нет" }}</td>
-          <td style="padding:8px 4px;"><a href="?edit={{ doc.slug }}">Редактировать</a></td>
+          <td style="padding:8px 4px;">
+            <code>{{ doc.patient_link }}</code>
+          </td>
+          <td style="padding:8px 4px;">
+            <a href="?edit={{ doc.slug }}">Редактировать</a>
+            <form method="post" style="display:inline; margin-left:8px;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle_active" />
+              <input type="hidden" name="slug" value="{{ doc.slug }}" />
+              <button class="secondary" type="submit">
+                {% if doc.is_active %}Деактивировать{% else %}Активировать{% endif %}
+              </button>
+            </form>
+          </td>
         </tr>
       {% endfor %}
     </tbody>
