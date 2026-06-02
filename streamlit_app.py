@@ -890,6 +890,20 @@ def sync_patient_snapshot() -> None:
         st.session_state["wizard_patient_snapshot"] = snapshot
 
 
+def resolve_selected_reasons_for_save() -> list[str]:
+    reasons = get_selected_reasons()
+    if reasons:
+        return reasons
+    active_draft_id = st.session_state.get("active_draft_id")
+    if active_draft_id:
+        existing = load_draft(str(active_draft_id)) or {}
+        existing_reasons = existing.get("main_reasons")
+        if isinstance(existing_reasons, list) and existing_reasons:
+            st.session_state["wizard_main_reasons_snapshot"] = list(existing_reasons)
+            return existing_reasons
+    return []
+
+
 def hydrate_patient_state_from_snapshot() -> None:
     snapshot = st.session_state.get("wizard_patient_snapshot") or {}
     if not snapshot:
@@ -919,7 +933,7 @@ def build_patient_payload_from_session(assigned_doctor: dict[str, str]) -> dict[
     urgent_symptoms = get_patient_field_value("urgent_symptoms", [NO_URGENT_SYMPTOMS]) or [NO_URGENT_SYMPTOMS]
     selected_urgent = [x for x in urgent_symptoms if x != NO_URGENT_SYMPTOMS]
 
-    selected_reasons = get_selected_reasons()
+    selected_reasons = resolve_selected_reasons_for_save()
     common = collect_common_from_session()
     branch = collect_branch_from_session(selected_reasons, sex)
 
