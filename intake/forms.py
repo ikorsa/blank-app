@@ -50,7 +50,92 @@ class Step3Form(forms.Form):
         ],
         required=False,
     )
-    medications = forms.CharField(label="Какие лекарства принимаете постоянно?", widget=forms.Textarea, required=False)
+    chronic_conditions = forms.MultipleChoiceField(
+        label="Какие хронические заболевания есть?",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        choices=[
+            ("none", "Нет хронических заболеваний"),
+            ("hypertension", "Артериальная гипертония"),
+            ("diabetes", "Сахарный диабет"),
+            ("thyroid", "Заболевания щитовидной железы"),
+            ("heart", "Ишемическая болезнь сердца / стенокардия"),
+            ("arrhythmia", "Аритмия"),
+            ("stroke", "Инфаркт или инсульт в прошлом"),
+            ("kidney", "Хронические заболевания почек"),
+            ("liver", "Хронические заболевания печени"),
+            ("gastro", "Заболевания желудка/кишечника"),
+            ("lung", "Бронхиальная астма / ХОБЛ"),
+            ("autoimmune", "Аутоиммунные заболевания"),
+            ("oncology", "Онкологические заболевания"),
+            ("osteoporosis", "Остеопороз"),
+            ("mental", "Депрессия / тревожное расстройство"),
+            ("unknown", "Не знаю"),
+            ("other", "Другое"),
+        ],
+    )
+    chronic_conditions_other = forms.CharField(
+        label="Уточните хронические заболевания (если выбрали «Другое»)",
+        required=False,
+    )
+    surgeries = forms.CharField(label="Были ли операции?", required=False, widget=forms.Textarea)
+    medications = forms.MultipleChoiceField(
+        label="Какие лекарства принимаете постоянно?",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        choices=[
+            ("none", "Не принимаю постоянно"),
+            ("pressure", "Препараты от давления"),
+            ("sugar", "Препараты от сахара"),
+            ("insulin", "Инсулин"),
+            ("lt4", "L-тироксин / Эутирокс"),
+            ("thyro", "Тирозол / пропицил"),
+            ("statin", "Статины / препараты холестерина"),
+            ("blood", "Антикоагулянты / антиагреганты"),
+            ("diuretic", "Мочегонные"),
+            ("hormonal", "Гормональные препараты / контрацептивы"),
+            ("antidepressant", "Антидепрессанты / противотревожные"),
+            ("steroid", "Глюкокортикоиды"),
+            ("vitd", "Витамин D / кальций"),
+            ("supplements", "БАДы"),
+            ("unknown", "Не помню"),
+            ("other", "Другое"),
+        ],
+    )
+    medications_details = forms.CharField(
+        label="Уточните названия, дозировки и режим приема",
+        required=False,
+        widget=forms.Textarea,
+    )
+    allergy_status = forms.ChoiceField(
+        label="Есть ли аллергии на лекарства?",
+        required=False,
+        choices=[("no", "Нет"), ("yes", "Да"), ("unknown", "Не знаю")],
+    )
+    allergies_details = forms.CharField(
+        label="Если «Да», укажите на какие лекарства и какая реакция",
+        required=False,
+        widget=forms.Textarea,
+    )
+    family_history = forms.MultipleChoiceField(
+        label="Есть ли у родственников эндокринные заболевания?",
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        choices=[
+            ("diabetes", "Диабет"),
+            ("thyroid", "Болезни щитовидной железы"),
+            ("obesity", "Ожирение"),
+            ("osteoporosis", "Остеопороз"),
+            ("unknown", "Не знаю"),
+            ("none", "Нет"),
+        ],
+    )
+    blood_pressure = forms.CharField(label="Ваше обычное артериальное давление?", required=False)
+    smoking = forms.ChoiceField(
+        label="Курите?",
+        required=False,
+        choices=[("no", "Нет"), ("yes", "Да"), ("quit", "Бросил/бросила")],
+    )
 
 
 class Step4Form(forms.Form):
