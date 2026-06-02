@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Проверка данных{% endblock %}
+{% block content %}
+  <h1>Черновой итог</h1>
+  <p class="muted">Это минимальный экран проверки для нового Django-контура.</p>
+  <pre class="draft-link">{{ data|safe }}</pre>
+  <div class="actions">
+    <a class="secondary" style="text-decoration:none;display:inline-block;" href="{% url 'intake:step1' %}">Новая анкета</a>
+  </div>
+{% endblock %}

@@ -22,6 +22,26 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
+### Новый контур (Django, WIP)
+
+В репозитории добавлен более надёжный контур на Django (многошаговая форма с хранением черновиков в БД).
+
+Запуск локально:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+Открыть:
+
+```text
+http://localhost:8000/
+```
+
 По умолчанию приложение слушает порт `9090`. В продакшене его лучше запускать через `systemd` на `127.0.0.1:9090` и отдавать наружу через Nginx:
 
 ```text

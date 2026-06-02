@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Шаг 1 — Анамнез{% endblock %}
+{% block content %}
+  <h1>Шаг 1. О вас</h1>
+  <p class="muted">Врач: {{ doctor.name|default:"Не выбран" }}</p>
+  {% if draft %}
+    <p class="muted">Черновик: {{ draft.id }}</p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="field">
+        {{ field.label_tag }}
+        {{ field }}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <div class="actions">
+      <button class="primary" type="submit">Далее</button>
+      <button class="secondary" type="submit" name="save_draft" value="1">Сохранить черновик</button>
+    </div>
+  </form>
+{% endblock %}

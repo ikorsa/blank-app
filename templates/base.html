@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Анамнез эндокринолога{% endblock %}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; color: #1e1e1e; }
+      .wrap { max-width: 860px; margin: 24px auto; padding: 0 16px; }
+      .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+      h1 { margin-top: 0; }
+      .messages { margin-bottom: 14px; }
+      .msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 8px; }
+      .msg.success { background: #e7f7ec; }
+      .msg.error { background: #fde8e8; }
+      .msg.warning { background: #fff5db; }
+      .field { margin-bottom: 12px; }
+      .field label { display: block; font-weight: 600; margin-bottom: 6px; }
+      input, select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+      ul.errorlist { color: #a20000; margin: 6px 0 0; padding-left: 16px; }
+      .actions { display: flex; gap: 10px; margin-top: 16px; }
+      button { border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+      .primary { background: #1677ff; color: white; }
+      .secondary { background: #e9ecef; color: #111; }
+      .muted { color: #666; font-size: 14px; }
+      .draft-link { font-family: monospace; word-break: break-all; background: #f1f3f5; padding: 8px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              <div class="msg {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </body>
+  </html>
