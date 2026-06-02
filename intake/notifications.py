@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from doctor_notifications import notification_status_lines, notify_doctor_on_submission
+from pathlib import Path
+
+from doctor_notifications import (
+    _mime_for_filename,
+    notification_status_lines,
+    notify_doctor_on_submission,
+)
 
 from .models import Doctor, Submission
 from .summary import build_submission_summary
@@ -44,8 +50,24 @@ def submission_to_notify_payload(submission: Submission) -> dict[str, Any]:
     }
 
 
+def submission_file_attachments(submission: Submission) -> list[tuple[str, bytes, str, str]]:
+    attachments: list[tuple[str, bytes, str, str]] = []
+    for stored in submission.files.all():
+        if not stored.file:
+            continue
+        filename = Path(stored.file.name).name
+        with stored.file.open("rb") as handle:
+            content = handle.read()
+        maintype, subtype = _mime_for_filename(filename)
+        attachments.append((filename, content, maintype, subtype))
+    return attachments
+
+
 def notify_after_submission(submission: Submission) -> list[tuple[bool, str]]:
-    return notify_doctor_on_submission(submission_to_notify_payload(submission))
+    submission.refresh_from_db()
+    payload = submission_to_notify_payload(submission)
+    files = submission_file_attachments(submission)
+    return notify_doctor_on_submission(payload, file_attachments=files)
 
 
 def notify_status_for_doctor(doctor: Doctor | None) -> list[str]:
