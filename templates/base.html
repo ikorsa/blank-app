@@ -15,13 +15,18 @@
       .msg.error { background: #fde8e8; }
       .msg.warning { background: #fff5db; }
       .field { margin-bottom: 12px; }
-      .field label { display: block; font-weight: 600; margin-bottom: 6px; }
-      input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+      .field > label { display: block; font-weight: 600; margin-bottom: 6px; }
+      input:not([type="checkbox"]):not([type="radio"]),
+      select,
+      textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
       textarea { min-height: 80px; resize: vertical; }
       fieldset.branch-section { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 14px 6px; margin: 0 0 16px; }
       fieldset.branch-section legend { font-weight: 700; padding: 0 6px; }
       ul { margin: 0; padding-left: 18px; }
       ul.errorlist { color: #a20000; margin: 6px 0 0; padding-left: 16px; }
+      .choice-list ul,
+      .checkbox-grid ul,
+      .radio-row ul { padding-left: 0; }
       .actions { display: flex; gap: 10px; margin-top: 16px; }
       button { border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
       .primary { background: #1677ff; color: white; }
@@ -55,9 +60,16 @@
       .radio-row input { width: auto; }
       .checkbox-grid ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
       @media (max-width: 640px) { .checkbox-grid ul { grid-template-columns: 1fr; } }
-      .checkbox-grid li { display: flex; align-items: flex-start; gap: 8px; }
-      .checkbox-grid label { font-weight: 400; margin: 0; line-height: 1.35; }
-      .checkbox-grid input { width: auto; margin-top: 3px; }
+      .checkbox-grid li { display: flex; align-items: center; gap: 10px; }
+      .checkbox-grid label { font-weight: 400; margin: 0; line-height: 1.35; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+      .checkbox-grid input[type="checkbox"] { width: auto; min-width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
+      .choice-list > ul,
+      .field.choice-list ul { list-style: none; padding: 0; margin: 0; }
+      .choice-list li { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .choice-list li:last-child { margin-bottom: 0; }
+      .choice-list li label { display: flex; align-items: center; gap: 10px; font-weight: 400; margin: 0; line-height: 1.4; cursor: pointer; flex: 1; }
+      .choice-list input[type="checkbox"],
+      .choice-list input[type="radio"] { width: auto; min-width: 18px; height: 18px; margin: 0; padding: 0; flex-shrink: 0; }
       .urgent-panel { background: #fffaf0; border-color: #f0dfbf; }
       .urgent-warning { color: #8a4b00; font-size: 13px; margin: 10px 0 0; }
       .urgent-note { margin: 0 0 10px; }
