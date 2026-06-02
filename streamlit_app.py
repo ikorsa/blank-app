@@ -1043,17 +1043,21 @@ def init_draft_from_query() -> str | None:
         return st.session_state.get("active_draft_id")
 
     draft_id = safe_filename(draft_id)
-    if st.session_state.get(f"draft_applied_{draft_id}"):
-        st.session_state["active_draft_id"] = draft_id
-        return draft_id
-
     draft = load_draft(draft_id)
     if not draft:
         st.warning("Черновик не найден или срок хранения истёк.")
         return None
 
+    applied_version_key = f"draft_applied_updated_at_{draft_id}"
+    draft_updated_at = str(draft.get("updated_at", ""))
+    already_applied_same_version = st.session_state.get(applied_version_key) == draft_updated_at and bool(draft_updated_at)
+    if already_applied_same_version:
+        st.session_state["active_draft_id"] = draft_id
+        return draft_id
+
     apply_draft_to_session(draft)
     st.session_state[f"draft_applied_{draft_id}"] = True
+    st.session_state[applied_version_key] = draft_updated_at
     st.session_state["active_draft_id"] = draft_id
     st.session_state["draft_last_autosave_ts"] = time.time()
     st.session_state.pop("draft_files_to_remove", None)
