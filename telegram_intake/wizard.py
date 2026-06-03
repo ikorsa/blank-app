@@ -6,6 +6,14 @@ from typing import Any
 from urllib.parse import quote
 
 from . import api
+from .branches import (
+    advance_branch,
+    branch_callback_prefix,
+    branch_step4_block,
+    current_branch_item,
+    init_branch_flow,
+    save_branch_value,
+)
 from .choices import wizard_choices
 from .session import clear_session, load_session, new_session, save_session, step_data
 from .submit import submit_session
@@ -34,7 +42,7 @@ SCREEN_PROGRESS = {
     "s3_family": (3, "Анамнез"),
     "s3_bp": (3, "Анамнез"),
     "s3_smoking": (3, "Анамнез"),
-    "s4_profile": (4, "Профиль"),
+    "s4_branch": (4, "Профиль"),
     "s5_files": (5, "Файлы"),
     "s5_comment": (5, "Файлы"),
     "s6_confirm": (6, "Отправка"),
@@ -112,6 +120,15 @@ def send_intro(chat_id: int, doctor: dict[str, str]) -> None:
         "Выберите способ:"
     )
     api.send_message(chat_id, text, intro_keyboard(doctor["id"]))
+
+
+def _append_skip_profile_row(markup: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not markup:
+        markup = {"inline_keyboard": []}
+    rows = list(markup.get("inline_keyboard") or [])
+    rows.append([{"text": "Пропустить профиль →", "callback_data": "s4:skip"}])
+    markup["inline_keyboard"] = rows
+    return markup
 
 
 def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
@@ -193,19 +210,25 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
     elif screen == "s3_smoking":
         text = prefix + "Курите?"
         markup = choice_keyboard("s3_smoke", choices["smoking"])
-    elif screen == "s4_profile":
-        text = (
-            prefix
-            + "Профильные блоки (щитовидка, диабет, вес и т.д.) пока подробнее заполняются на сайте.\n\n"
-            + f"Ссылка: {intake_url(session['doctor_id'])}\n\n"
-            + "Можно отправить анкету без них или открыть сайт позже."
-        )
-        markup = {
-            "inline_keyboard": [
-                [{"text": "Продолжить без профиля →", "callback_data": "s4:skip"}],
-                [{"text": "Открыть на сайте", "url": intake_url(session["doctor_id"])}],
-            ]
-        }
+    elif screen == "s4_branch":
+        item = current_branch_item(session)
+        if not item:
+            _set_screen(session, "s5_files")
+            return prompt_for_screen(session)
+        index = int(session.get("branch_index") or 0)
+        total = len(session.get("branch_queue") or [])
+        text = prefix + f"{item['reason_label']} ({index + 1}/{total})\n\n{item['label']}"
+        prefix_key = branch_callback_prefix(item)
+        if item["kind"] == "choice":
+            markup = choice_keyboard(f"{prefix_key}:c", item["choices"])
+        elif item["kind"] == "multi":
+            block = branch_step4_block(session, item["reason"])
+            selected = block.get(item["field_name"]) or []
+            _start_multi(session, f"step4|{item['reason']}|{item['field_name']}", list(selected) if isinstance(selected, list) else [])
+            markup = multi_keyboard(prefix_key, item["choices"], session["multi_selected"])
+        else:
+            markup = nav_keyboard(skip=True)
+        markup = _append_skip_profile_row(markup)
     elif screen == "s5_files":
         count = len(session.get("pending_files") or [])
         text = (
@@ -276,6 +299,12 @@ def _validate_weight(text: str) -> float | None:
 
 def _save_multi(session: dict[str, Any]) -> None:
     field_key = session.get("multi_field") or ""
+    if field_key.startswith("step4|"):
+        parts = field_key.split("|", 2)
+        if len(parts) == 3:
+            _, reason, field_name = parts
+            save_branch_value(session, reason, field_name, list(session.get("multi_selected") or []))
+        return
     if not field_key or "." not in field_key:
         return
     step_key, field_name = field_key.split(".", 1)
@@ -332,8 +361,21 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         return
 
     if data == "s4:skip":
+        session["branch_queue"] = []
+        session["branch_index"] = 0
         _set_screen(session, "s5_files")
         send_screen(int(chat_id), session)
+        return
+
+    if ":c:" in data and data.startswith("b4:"):
+        left, code = data.split(":c:", 1)
+        parts = left.split(":")
+        if len(parts) >= 3:
+            reason, field_name = parts[1], parts[2]
+            save_branch_value(session, reason, field_name, code)
+            _set_screen(session, advance_branch(session))
+            save_session(session)
+            send_screen(int(chat_id), session)
         return
 
     if data in {"s5:next", "s5:skip"}:
@@ -379,6 +421,9 @@ def _handle_multi_callback(session: dict[str, Any], data: str) -> None:
     if data.endswith(":done"):
         prefix = data.rsplit(":done", 1)[0]
         _save_multi(session)
+        if session.get("screen") == "s4_branch":
+            _set_screen(session, advance_branch(session))
+            return
         _advance_after_multi(session, prefix)
         return
     match = re.match(r"^(.+):t:(.+)$", data)
@@ -409,7 +454,7 @@ def _handle_single_choice(session: dict[str, Any], data: str) -> None:
         _set_screen(session, "s3_allergies_details" if code == "yes" else "s3_family")
     elif data.startswith("s3_smoke:"):
         _apply_choice(session, "step3", "smoking", data.split(":", 1)[1])
-        _set_screen(session, "s4_profile")
+        _set_screen(session, init_branch_flow(session))
 
 
 def _advance_after_multi(session: dict[str, Any], prefix: str) -> None:
@@ -440,6 +485,12 @@ def _advance_after_skip(session: dict[str, Any]) -> None:
         step_data(session, "step3")["allergies_details"] = ""
     elif screen == "s3_bp":
         step_data(session, "step3")["blood_pressure"] = ""
+    elif screen == "s4_branch":
+        item = current_branch_item(session)
+        if item:
+            save_branch_value(session, str(item["reason"]), str(item["field_name"]), "")
+        _set_screen(session, advance_branch(session))
+        return
     elif screen == "s5_comment":
         step_data(session, "step5")["additional_comment"] = ""
         _set_screen(session, "s6_confirm")
@@ -527,6 +578,13 @@ def handle_text(message: dict[str, Any]) -> None:
     elif screen == "s3_bp":
         s3["blood_pressure"] = text
         _set_screen(session, "s3_smoking")
+    elif screen == "s4_branch":
+        item = current_branch_item(session)
+        if not item or item.get("kind") != "text":
+            api.send_message(int(chat_id), "Используйте кнопки на экране или «Пропустить».")
+            return
+        save_branch_value(session, str(item["reason"]), str(item["field_name"]), text)
+        _set_screen(session, advance_branch(session))
     elif screen == "s5_comment":
         s5["additional_comment"] = text
         _set_screen(session, "s6_confirm")
