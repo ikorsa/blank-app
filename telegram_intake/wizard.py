@@ -20,6 +20,10 @@ from .submit import submit_session
 
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech").rstrip("/")
 
+TEXT_REPLY_HINT = (
+    "\n\n✏️ Напишите ответ обычным сообщением в поле «Сообщение» внизу экрана и нажмите отправить."
+)
+
 SCREEN_PROGRESS = {
     "s1_full_name": (1, "Контакты"),
     "s1_age": (1, "Контакты"),
@@ -162,25 +166,25 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
     prefix = progress_line(screen)
 
     if screen == "s1_full_name":
-        text = prefix + "Как вас зовут? (ФИО)"
+        text = prefix + "Как вас зовут? (ФИО)" + TEXT_REPLY_HINT
         markup = nav_keyboard(skip=False)
     elif screen == "s1_age":
-        text = prefix + "Сколько вам полных лет?"
+        text = prefix + "Сколько вам полных лет?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_full_name")
     elif screen == "s1_sex":
         text = prefix + "Укажите пол:"
         markup = choice_keyboard("s1_sex", choices["sex"])
     elif screen == "s1_phone":
-        text = prefix + "Телефон для связи (например +7 900 000-00-00):"
+        text = prefix + "Телефон для связи (например +7 900 000-00-00):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_age")
     elif screen == "s1_city":
-        text = prefix + "Город проживания:"
+        text = prefix + "Город проживания:" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_phone")
     elif screen == "s1_height":
-        text = prefix + "Рост в см (например 170):"
+        text = prefix + "Рост в см (например 170):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_city")
     elif screen == "s1_weight":
-        text = prefix + "Вес в кг (например 72.5):"
+        text = prefix + "Вес в кг (например 72.5):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_height")
     elif screen == "s1_reproductive":
         text = prefix + "Беременность / лактация:"
@@ -196,7 +200,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step2").get("main_reasons"))
         markup = multi_keyboard("s2", choices["reasons"], selected)
     elif screen == "s3_complaints":
-        text = prefix + "Какие жалобы беспокоят сейчас? (своими словами)"
+        text = prefix + "Какие жалобы беспокоят сейчас? (своими словами)" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s2_reasons", skip=True)
     elif screen == "s3_complaints_started":
         text = prefix + "Когда появились жалобы?"
@@ -207,7 +211,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("chronic_conditions"))
         markup = multi_keyboard("s3_chron", choices["chronic_conditions"], selected)
     elif screen == "s3_surgeries":
-        text = prefix + "Были ли операции? (кратко или «нет»)"
+        text = prefix + "Были ли операции? (кратко или «нет»)" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_chronic", skip=True)
     elif screen == "s3_medications":
         text = prefix + "Постоянные лекарства (можно несколько):"
@@ -215,13 +219,13 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("medications"))
         markup = multi_keyboard("s3_med", choices["medications"], selected)
     elif screen == "s3_medications_details":
-        text = prefix + "Уточните названия, дозировки и режим приёма:"
+        text = prefix + "Уточните названия, дозировки и режим приёма:" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_medications", skip=True)
     elif screen == "s3_allergy":
         text = prefix + "Есть ли аллергии на лекарства?"
         markup = choice_keyboard("s3_allergy", choices["allergy_status"])
     elif screen == "s3_allergies_details":
-        text = prefix + "На какие лекарства и какая реакция?"
+        text = prefix + "На какие лекарства и какая реакция?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_allergy", skip=True)
     elif screen == "s3_family":
         text = prefix + "Эндокринные заболевания у родственников:"
@@ -229,7 +233,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("family_history"))
         markup = multi_keyboard("s3_fam", choices["family_history"], selected)
     elif screen == "s3_bp":
-        text = prefix + "Ваше обычное артериальное давление?"
+        text = prefix + "Ваше обычное артериальное давление?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_family", skip=True)
     elif screen == "s3_smoking":
         text = prefix + "Курите?"
@@ -242,6 +246,8 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         index = int(session.get("branch_index") or 0)
         total = len(session.get("branch_queue") or [])
         text = prefix + f"{item['reason_label']} ({index + 1}/{total})\n\n{item['label']}"
+        if item.get("kind") == "text":
+            text += TEXT_REPLY_HINT
         prefix_key = branch_callback_prefix(item)
         if item["kind"] == "choice":
             markup = choice_keyboard(f"{prefix_key}:c", item["choices"])
@@ -267,7 +273,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
             ]
         }
     elif screen == "s5_comment":
-        text = prefix + "Комментарий для врача (необязательно):"
+        text = prefix + "Комментарий для врача (необязательно):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s5_files", skip=True)
     elif screen == "s6_confirm":
         from .django_bootstrap import ensure_django
@@ -643,7 +649,11 @@ def handle_text(message: dict[str, Any]) -> None:
         s5["additional_comment"] = text
         _set_screen(session, "s6_confirm")
     else:
-        api.send_message(int(chat_id), "Используйте кнопки на экране или /cancel для отмены.")
+        api.send_message(
+            int(chat_id),
+            "На этом шаге нужно написать ответ сообщением внизу экрана (поле «Сообщение»). "
+            "Или используйте кнопки на экране. /cancel — отмена.",
+        )
         return
 
     save_session(session)
