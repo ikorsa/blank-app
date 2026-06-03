@@ -1,7 +1,7 @@
 import os
 import time
 
-from telegram_intake.api import api_request, poll_updates, send_message
+from telegram_intake.api import answer_callback, api_request, poll_updates, send_message
 from telegram_intake.doctors import get_doctor, load_doctors
 from telegram_intake.session import load_session
 from telegram_intake.wizard import (
@@ -38,6 +38,18 @@ def doctor_label(doctor: dict[str, str]) -> str:
     return f"{doctor['name']} ({doctor['specialty']})"
 
 
+from telegram_intake.picker import doctor_short_label, doctors_picker_keyboard(chat_id: int, doctors: list[dict[str, str]], *, title: str) -> None:
+    if not doctors:
+        send_message(chat_id, "Список врачей пока не настроен.")
+        return
+    text = (
+        f"{title}\n\n"
+        "Нажмите на врача ниже или откройте персональную ссылку от клиники.\n"
+        f"Пример: t.me/{BOT_USERNAME}?start=doctor_{doctors[0]['id']}"
+    )
+    send_message(chat_id, text, doctors_picker_keyboard(doctors))
+
+
 def parse_start_payload(text: str) -> str:
     parts = text.split(maxsplit=1)
     if len(parts) < 2:
@@ -69,30 +81,26 @@ def handle_command(message: dict) -> None:
         if len(doctors) == 1:
             start_wizard_for_doctor(int(chat_id), doctors[0])
             return
-        send_message(
-            chat_id,
-            "Здравствуйте. Откройте персональную ссылку врача или команду /doctors.",
+        send_doctor_picker(
+            int(chat_id),
+            doctors,
+            title="Здравствуйте! Выберите врача для анкеты перед приёмом:",
         )
         return
 
     if text.startswith("/doctors"):
-        if not doctors:
-            send_message(chat_id, "Список врачей пока не настроен.")
-            return
-        lines = ["Доступные врачи:"]
-        for doctor in doctors:
-            lines.append(f"- {doctor_label(doctor)}: /start doctor_{doctor['id']}")
-        send_message(chat_id, "\n".join(lines))
+        send_doctor_picker(int(chat_id), doctors, title="Доступные врачи:")
         return
 
     if text.startswith("/help"):
         send_message(
             chat_id,
             "Как заполнить анкету:\n\n"
-            f"1. Откройте ссылку t.me/{BOT_USERNAME}?start=doctor_КОД\n"
-            "2. «Заполнить в Telegram» — пошагово в боте\n"
-            "3. Или «Открыть на сайте» — в браузере\n"
-            "4. В конце — «Отправить врачу»\n\n"
+            f"1. /start или /doctors — выберите врача кнопкой\n"
+            f"2. Или ссылка t.me/{BOT_USERNAME}?start=doctor_КОД\n"
+            "3. «Заполнить в Telegram» — пошагово в боте\n"
+            "4. Или «Открыть на сайте» — в браузере\n"
+            "5. В конце — «Отправить врачу»\n\n"
             "Команды:\n"
             "/doctors — список врачей\n"
             "/cancel — отменить текущую анкету\n"
@@ -107,14 +115,37 @@ def handle_command(message: dict) -> None:
     send_message(
         chat_id,
         f"Помогу заполнить анкету перед приёмом.\n"
-        f"Начните: /start doctor_КОД или /help\n"
+        f"Начните: /start или /doctors\n"
         f"Бот: @{BOT_USERNAME}",
     )
+
+
+def handle_doctor_pick(callback: dict) -> bool:
+    data = str(callback.get("data") or "")
+    if not data.startswith("doc:"):
+        return False
+    doctor_id = data.split(":", 1)[1].strip().lower()
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    callback_id = str(callback.get("id") or "")
+    if not chat_id:
+        return True
+    doctor = get_doctor(doctor_id)
+    if not doctor:
+        answer_callback(callback_id, "Врач не найден")
+        send_message(int(chat_id), f"Врач «{doctor_id}» не найден. Попробуйте /doctors.")
+        return True
+    answer_callback(callback_id, doctor.get("name", doctor_id))
+    start_wizard_for_doctor(int(chat_id), doctor)
+    return True
 
 
 def handle_update(update: dict) -> None:
     callback = update.get("callback_query")
     if callback:
+        if handle_doctor_pick(callback):
+            return
         handle_callback(callback, get_doctor)
         message = callback.get("message") or {}
         chat = message.get("chat") or {}
