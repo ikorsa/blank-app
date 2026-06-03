@@ -68,11 +68,32 @@ def choice_keyboard(prefix: str, choices: list[tuple[str, str]]) -> dict[str, An
 
 def multi_keyboard(prefix: str, choices: list[tuple[str, str]], selected: list[str]) -> dict[str, Any]:
     rows: list[list[dict[str, str]]] = []
+    selected_set = set(selected)
     for code, label in choices:
-        mark = "✓ " if code in selected else ""
-        rows.append([{"text": f"{mark}{label}", "callback_data": f"{prefix}:t:{code}"}])
-    rows.append([{"text": "Готово →", "callback_data": f"{prefix}:done"}])
+        if code in selected_set:
+            button_text = f"✅ {label}"
+        else:
+            button_text = f"☐ {label}"
+        rows.append([{"text": button_text, "callback_data": f"{prefix}:t:{code}"}])
+    done_count = len(selected_set)
+    done_label = f"Готово ({done_count}) →" if done_count else "Готово →"
+    rows.append([{"text": done_label, "callback_data": f"{prefix}:done"}])
     return {"inline_keyboard": rows}
+
+
+def _resolved_multi_selected(session: dict[str, Any], field_key: str, stored: Any) -> list[str]:
+    """Keep in-progress toggles; load from saved data only when opening the field."""
+    if session.get("multi_field") == field_key:
+        return [str(item) for item in (session.get("multi_selected") or [])]
+    if isinstance(stored, list):
+        return [str(item) for item in stored]
+    return []
+
+
+def _prepare_multi(session: dict[str, Any], field_key: str, stored: Any) -> list[str]:
+    selected = _resolved_multi_selected(session, field_key, stored)
+    _start_multi(session, field_key, selected)
+    return selected
 
 
 def intro_keyboard(doctor_id: str) -> dict[str, Any]:
@@ -163,14 +184,14 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         markup = choice_keyboard("s1_repro", choices["reproductive"])
     elif screen == "s1_urgent":
         text = prefix + "Отметьте срочные симптомы, если есть сейчас (можно ничего не выбирать):"
-        selected = step_data(session, "step1").get("urgent_symptoms") or session.get("multi_selected") or []
-        _start_multi(session, "step1.urgent_symptoms", list(selected) if isinstance(selected, list) else [])
-        markup = multi_keyboard("s1_urg", choices["urgent"], session["multi_selected"])
+        field_key = "step1.urgent_symptoms"
+        selected = _prepare_multi(session, field_key, step_data(session, "step1").get("urgent_symptoms"))
+        markup = multi_keyboard("s1_urg", choices["urgent"], selected)
     elif screen == "s2_reasons":
         text = prefix + "Причина обращения (можно несколько):"
-        selected = step_data(session, "step2").get("main_reasons") or []
-        _start_multi(session, "step2.main_reasons", list(selected) if isinstance(selected, list) else [])
-        markup = multi_keyboard("s2", choices["reasons"], session["multi_selected"])
+        field_key = "step2.main_reasons"
+        selected = _prepare_multi(session, field_key, step_data(session, "step2").get("main_reasons"))
+        markup = multi_keyboard("s2", choices["reasons"], selected)
     elif screen == "s3_complaints":
         text = prefix + "Какие жалобы беспокоят сейчас? (своими словами)"
         markup = nav_keyboard(back="s2_reasons", skip=True)
@@ -179,17 +200,17 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         markup = choice_keyboard("s3_start", choices["complaints_started"])
     elif screen == "s3_chronic":
         text = prefix + "Хронические заболевания (можно несколько):"
-        selected = step_data(session, "step3").get("chronic_conditions") or []
-        _start_multi(session, "step3.chronic_conditions", list(selected) if isinstance(selected, list) else [])
-        markup = multi_keyboard("s3_chron", choices["chronic_conditions"], session["multi_selected"])
+        field_key = "step3.chronic_conditions"
+        selected = _prepare_multi(session, field_key, step_data(session, "step3").get("chronic_conditions"))
+        markup = multi_keyboard("s3_chron", choices["chronic_conditions"], selected)
     elif screen == "s3_surgeries":
         text = prefix + "Были ли операции? (кратко или «нет»)"
         markup = nav_keyboard(back="s3_chronic", skip=True)
     elif screen == "s3_medications":
         text = prefix + "Постоянные лекарства (можно несколько):"
-        selected = step_data(session, "step3").get("medications") or []
-        _start_multi(session, "step3.medications", list(selected) if isinstance(selected, list) else [])
-        markup = multi_keyboard("s3_med", choices["medications"], session["multi_selected"])
+        field_key = "step3.medications"
+        selected = _prepare_multi(session, field_key, step_data(session, "step3").get("medications"))
+        markup = multi_keyboard("s3_med", choices["medications"], selected)
     elif screen == "s3_medications_details":
         text = prefix + "Уточните названия, дозировки и режим приёма:"
         markup = nav_keyboard(back="s3_medications", skip=True)
@@ -201,9 +222,9 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         markup = nav_keyboard(back="s3_allergy", skip=True)
     elif screen == "s3_family":
         text = prefix + "Эндокринные заболевания у родственников:"
-        selected = step_data(session, "step3").get("family_history") or []
-        _start_multi(session, "step3.family_history", list(selected) if isinstance(selected, list) else [])
-        markup = multi_keyboard("s3_fam", choices["family_history"], session["multi_selected"])
+        field_key = "step3.family_history"
+        selected = _prepare_multi(session, field_key, step_data(session, "step3").get("family_history"))
+        markup = multi_keyboard("s3_fam", choices["family_history"], selected)
     elif screen == "s3_bp":
         text = prefix + "Ваше обычное артериальное давление?"
         markup = nav_keyboard(back="s3_family", skip=True)
@@ -222,10 +243,10 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         if item["kind"] == "choice":
             markup = choice_keyboard(f"{prefix_key}:c", item["choices"])
         elif item["kind"] == "multi":
+            field_key = f"step4|{item['reason']}|{item['field_name']}"
             block = branch_step4_block(session, item["reason"])
-            selected = block.get(item["field_name"]) or []
-            _start_multi(session, f"step4|{item['reason']}|{item['field_name']}", list(selected) if isinstance(selected, list) else [])
-            markup = multi_keyboard(prefix_key, item["choices"], session["multi_selected"])
+            selected = _prepare_multi(session, field_key, block.get(item["field_name"]))
+            markup = multi_keyboard(prefix_key, item["choices"], selected)
         else:
             markup = nav_keyboard(skip=True)
         markup = _append_skip_profile_row(markup)
