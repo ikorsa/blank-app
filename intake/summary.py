@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .branch_fields import REASON_LABELS, format_branch_key
+from .choice_labels import format_branch_value, format_step3_value
 from .forms import REPRODUCTIVE_STATUS_CHOICES, URGENT_SYMPTOM_CHOICES
 from .models import MAIN_REASONS, Submission
 from .wizard_files import pending_file_records
@@ -109,17 +110,17 @@ def build_submission_summary(data: dict[str, Any]) -> str:
             f"- Беременность/лактация: {reproductive or 'не указано'}",
             "",
             "ОБЩИЙ АНАМНЕЗ",
-            f"- Когда появились жалобы: {_fmt(step3.get('complaints_started'))}",
-            f"- Хронические заболевания: {_fmt(step3.get('chronic_conditions'))}",
+            f"- Когда появились жалобы: {format_step3_value('complaints_started', step3.get('complaints_started'))}",
+            f"- Хронические заболевания: {format_step3_value('chronic_conditions', step3.get('chronic_conditions'))}",
             f"- Уточнение по хроническим заболеваниям: {_fmt(step3.get('chronic_conditions_other'))}",
             f"- Операции: {_fmt(step3.get('surgeries'))}",
-            f"- Постоянные лекарства: {_fmt(step3.get('medications'))}",
+            f"- Постоянные лекарства: {format_step3_value('medications', step3.get('medications'))}",
             f"- Уточнение по лекарствам: {_fmt(step3.get('medications_details'))}",
-            f"- Аллергии на лекарства: {_fmt(step3.get('allergy_status'))}",
+            f"- Аллергии на лекарства: {format_step3_value('allergy_status', step3.get('allergy_status'))}",
             f"- Уточнение по аллергиям: {_fmt(step3.get('allergies_details'))}",
-            f"- Семейный анамнез: {_fmt(step3.get('family_history'))}",
+            f"- Семейный анамнез: {format_step3_value('family_history', step3.get('family_history'))}",
             f"- Обычное АД: {_fmt(step3.get('blood_pressure'))}",
-            f"- Курение: {_fmt(step3.get('smoking'))}",
+            f"- Курение: {format_step3_value('smoking', step3.get('smoking'))}",
             "",
             "ПРОФИЛЬНЫЕ БЛОКИ",
         ]
@@ -130,7 +131,7 @@ def build_submission_summary(data: dict[str, Any]) -> str:
             lines.append(f"{REASON_LABELS.get(reason, reason)}:")
             if isinstance(answers, dict):
                 for key, value in answers.items():
-                    lines.append(f"- {format_branch_key(key)}: {_fmt(value)}")
+                    lines.append(f"- {format_branch_key(key)}: {format_branch_value(reason, key, value)}")
             else:
                 lines.append(f"- {_fmt(answers)}")
             lines.append("")
