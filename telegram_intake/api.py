@@ -3,11 +3,23 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", "")
 POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
+
+
+def _prepare_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    prepared = dict(payload)
+    markup = prepared.get("reply_markup")
+    if isinstance(markup, dict):
+        # Telegram Bot API expects reply_markup as a JSON-encoded string.
+        prepared["reply_markup"] = json.dumps(markup, ensure_ascii=False)
+    if "chat_id" in prepared and prepared["chat_id"] is not None:
+        prepared["chat_id"] = int(prepared["chat_id"])
+    return prepared
 
 
 def api_request(method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -17,11 +29,19 @@ def api_request(method: str, payload: dict[str, Any] | None = None) -> dict[str,
     data = None
     headers: dict[str, str] = {}
     if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        data = json.dumps(_prepare_payload(payload), ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
-    with urlopen(request, timeout=POLL_TIMEOUT + 10) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=POLL_TIMEOUT + 10) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Telegram API {method} HTTP {exc.code}: {detail}") from exc
+
+    if not body.get("ok", True):
+        raise RuntimeError(f"Telegram API {method} failed: {body}")
+    return body
 
 
 def send_message(chat_id: int, text: str, reply_markup: dict[str, Any] | None = None) -> int | None:

@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# User/Group patched on VPS if not "anamnes" (see deploy/switch-to-django-only.sh)
 User=anamnes
 Group=anamnes
 WorkingDirectory=/opt/anamnes
