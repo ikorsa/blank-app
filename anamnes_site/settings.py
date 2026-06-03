@@ -5,7 +5,8 @@ from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 _INSECURE_DEV_SECRET = "dev-secret-key-change-me"
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", _INSECURE_DEV_SECRET)
+_env_secret = os.getenv("DJANGO_SECRET_KEY", "").strip()
+SECRET_KEY = _env_secret if _env_secret else _INSECURE_DEV_SECRET
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
 
