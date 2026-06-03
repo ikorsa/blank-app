@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from telegram_intake.wizard import _resolved_multi_selected, multi_keyboard
+from telegram_intake.wizard import _multi_field_for_prefix, _prepare_multi, _resolved_multi_selected, multi_keyboard
 
 
 class MultiKeyboardTests(SimpleTestCase):
@@ -28,3 +28,16 @@ class MultiKeyboardTests(SimpleTestCase):
         session = {"multi_field": "", "multi_selected": [], "data": {}}
         selected = _resolved_multi_selected(session, "step2.main_reasons", ["thyroid"])
         self.assertEqual(selected, ["thyroid"])
+
+    def test_prepare_multi_keeps_toggle_after_field_set(self) -> None:
+        session = {
+            "screen": "s2_reasons",
+            "multi_field": "step2.main_reasons",
+            "multi_selected": ["thyroid"],
+            "data": {"step2": {"main_reasons": []}},
+        }
+        selected = _prepare_multi(session, "step2.main_reasons", [])
+        self.assertEqual(selected, ["thyroid"])
+
+    def test_multi_field_for_s2_prefix(self) -> None:
+        self.assertEqual(_multi_field_for_prefix("s2"), "step2.main_reasons")

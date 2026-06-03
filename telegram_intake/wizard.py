@@ -14,11 +14,15 @@ from .branches import (
     init_branch_flow,
     save_branch_value,
 )
-from .choices import wizard_choices
+from .choices import get_wizard_choices
 from .session import clear_session, load_session, new_session, save_session, step_data
 from .submit import submit_session
 
 PUBLIC_URL = os.getenv("ANAMNES_PUBLIC_URL", "https://anamnes.ikorsakov.tech").rstrip("/")
+
+TEXT_REPLY_HINT = (
+    "\n\n✏️ Напишите ответ обычным сообщением в поле «Сообщение» внизу экрана и нажмите отправить."
+)
 
 SCREEN_PROGRESS = {
     "s1_full_name": (1, "Контакты"),
@@ -157,30 +161,30 @@ def _append_skip_profile_row(markup: dict[str, Any] | None) -> dict[str, Any] | 
 
 def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
     screen = session["screen"]
-    choices = wizard_choices()
+    choices = get_wizard_choices()
     markup: dict[str, Any] | None = None
     prefix = progress_line(screen)
 
     if screen == "s1_full_name":
-        text = prefix + "Как вас зовут? (ФИО)"
+        text = prefix + "Как вас зовут? (ФИО)" + TEXT_REPLY_HINT
         markup = nav_keyboard(skip=False)
     elif screen == "s1_age":
-        text = prefix + "Сколько вам полных лет?"
+        text = prefix + "Сколько вам полных лет?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_full_name")
     elif screen == "s1_sex":
         text = prefix + "Укажите пол:"
         markup = choice_keyboard("s1_sex", choices["sex"])
     elif screen == "s1_phone":
-        text = prefix + "Телефон для связи (например +7 900 000-00-00):"
+        text = prefix + "Телефон для связи (например +7 900 000-00-00):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_age")
     elif screen == "s1_city":
-        text = prefix + "Город проживания:"
+        text = prefix + "Город проживания:" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_phone")
     elif screen == "s1_height":
-        text = prefix + "Рост в см (например 170):"
+        text = prefix + "Рост в см (например 170):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_city")
     elif screen == "s1_weight":
-        text = prefix + "Вес в кг (например 72.5):"
+        text = prefix + "Вес в кг (например 72.5):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s1_height")
     elif screen == "s1_reproductive":
         text = prefix + "Беременность / лактация:"
@@ -196,7 +200,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step2").get("main_reasons"))
         markup = multi_keyboard("s2", choices["reasons"], selected)
     elif screen == "s3_complaints":
-        text = prefix + "Какие жалобы беспокоят сейчас? (своими словами)"
+        text = prefix + "Какие жалобы беспокоят сейчас? (своими словами)" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s2_reasons", skip=True)
     elif screen == "s3_complaints_started":
         text = prefix + "Когда появились жалобы?"
@@ -207,7 +211,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("chronic_conditions"))
         markup = multi_keyboard("s3_chron", choices["chronic_conditions"], selected)
     elif screen == "s3_surgeries":
-        text = prefix + "Были ли операции? (кратко или «нет»)"
+        text = prefix + "Были ли операции? (кратко или «нет»)" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_chronic", skip=True)
     elif screen == "s3_medications":
         text = prefix + "Постоянные лекарства (можно несколько):"
@@ -215,13 +219,13 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("medications"))
         markup = multi_keyboard("s3_med", choices["medications"], selected)
     elif screen == "s3_medications_details":
-        text = prefix + "Уточните названия, дозировки и режим приёма:"
+        text = prefix + "Уточните названия, дозировки и режим приёма:" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_medications", skip=True)
     elif screen == "s3_allergy":
         text = prefix + "Есть ли аллергии на лекарства?"
         markup = choice_keyboard("s3_allergy", choices["allergy_status"])
     elif screen == "s3_allergies_details":
-        text = prefix + "На какие лекарства и какая реакция?"
+        text = prefix + "На какие лекарства и какая реакция?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_allergy", skip=True)
     elif screen == "s3_family":
         text = prefix + "Эндокринные заболевания у родственников:"
@@ -229,7 +233,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         selected = _prepare_multi(session, field_key, step_data(session, "step3").get("family_history"))
         markup = multi_keyboard("s3_fam", choices["family_history"], selected)
     elif screen == "s3_bp":
-        text = prefix + "Ваше обычное артериальное давление?"
+        text = prefix + "Ваше обычное артериальное давление?" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s3_family", skip=True)
     elif screen == "s3_smoking":
         text = prefix + "Курите?"
@@ -242,6 +246,8 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
         index = int(session.get("branch_index") or 0)
         total = len(session.get("branch_queue") or [])
         text = prefix + f"{item['reason_label']} ({index + 1}/{total})\n\n{item['label']}"
+        if item.get("kind") == "text":
+            text += TEXT_REPLY_HINT
         prefix_key = branch_callback_prefix(item)
         if item["kind"] == "choice":
             markup = choice_keyboard(f"{prefix_key}:c", item["choices"])
@@ -267,7 +273,7 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
             ]
         }
     elif screen == "s5_comment":
-        text = prefix + "Комментарий для врача (необязательно):"
+        text = prefix + "Комментарий для врача (необязательно):" + TEXT_REPLY_HINT
         markup = nav_keyboard(back="s5_files", skip=True)
     elif screen == "s6_confirm":
         from .django_bootstrap import ensure_django
@@ -291,8 +297,45 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
     return text, markup
 
 
+def _multi_field_for_prefix(prefix: str) -> str:
+    return {
+        "s1_urg": "step1.urgent_symptoms",
+        "s2": "step2.main_reasons",
+        "s3_chron": "step3.chronic_conditions",
+        "s3_med": "step3.medications",
+        "s3_fam": "step3.family_history",
+    }.get(prefix, "")
+
+
+def _multi_prefix_for_screen(screen: str) -> str:
+    return {
+        "s1_urgent": "s1_urg",
+        "s2_reasons": "s2",
+        "s3_chronic": "s3_chron",
+        "s3_medications": "s3_med",
+        "s3_family": "s3_fam",
+    }.get(screen, "")
+
+
+def _callback_matches_multi_screen(session: dict[str, Any], data: str) -> bool:
+    screen = str(session.get("screen") or "")
+    if screen == "s4_branch":
+        return data.startswith("b4:") and (":t:" in data or data.endswith(":done"))
+    expected = _multi_prefix_for_screen(screen)
+    if not expected:
+        return True
+    return data == f"{expected}:done" or data.startswith(f"{expected}:t:")
+
+
+def _ensure_multi_field(session: dict[str, Any], prefix: str) -> None:
+    field_key = _multi_field_for_prefix(prefix)
+    if field_key:
+        session["multi_field"] = field_key
+
+
 def send_screen(chat_id: int, session: dict[str, Any]) -> None:
     text, markup = prompt_for_screen(session)
+    save_session(session)
     api.send_message(chat_id, text, markup)
 
 
@@ -361,6 +404,16 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         api.safe_answer_callback(callback_id)
         return
 
+    if (":t:" in data or data.endswith(":done")) and data.endswith(":done"):
+        prefix = data.rsplit(":done", 1)[0]
+        if prefix == "s2" and not session.get("multi_selected"):
+            api.safe_answer_callback(callback_id, "Выберите хотя бы одну причину обращения.")
+            return
+
+    if (":t:" in data or data.endswith(":done")) and not _callback_matches_multi_screen(session, data):
+        api.safe_answer_callback(callback_id, "Используйте кнопки в последнем сообщении бота")
+        return
+
     api.safe_answer_callback(callback_id)
 
     if data == "wiz:start":
@@ -422,16 +475,21 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         return
 
     if ":t:" in data or data.endswith(":done"):
+        prior_screen = session["screen"]
         _handle_multi_callback(session, data)
         save_session(session)
+        if session["screen"] != prior_screen:
+            send_screen(int(chat_id), session)
+            return
         message_id = message.get("message_id")
-        text, markup = prompt_for_screen(session)
-        if message_id and session["screen"] == session.get("_last_multi_screen"):
-            try:
-                api.edit_message(int(chat_id), int(message_id), text, markup)
+        if message_id:
+            text, markup = prompt_for_screen(session)
+            if api.try_edit_message(int(chat_id), int(message_id), text, markup):
+                save_session(session)
                 return
-            except Exception:
-                pass
+            if markup and api.try_edit_reply_markup(int(chat_id), int(message_id), markup):
+                save_session(session)
+                return
         send_screen(int(chat_id), session)
         return
 
@@ -444,6 +502,7 @@ def _handle_multi_callback(session: dict[str, Any], data: str) -> None:
     session["_last_multi_screen"] = session["screen"]
     if data.endswith(":done"):
         prefix = data.rsplit(":done", 1)[0]
+        _ensure_multi_field(session, prefix)
         _save_multi(session)
         if session.get("screen") == "s4_branch":
             _set_screen(session, advance_branch(session))
@@ -453,7 +512,8 @@ def _handle_multi_callback(session: dict[str, Any], data: str) -> None:
     match = re.match(r"^(.+):t:(.+)$", data)
     if not match:
         return
-    code = match.group(2)
+    prefix, code = match.group(1), match.group(2)
+    _ensure_multi_field(session, prefix)
     selected = list(session.get("multi_selected") or [])
     if code in selected:
         selected.remove(code)
@@ -613,7 +673,11 @@ def handle_text(message: dict[str, Any]) -> None:
         s5["additional_comment"] = text
         _set_screen(session, "s6_confirm")
     else:
-        api.send_message(int(chat_id), "Используйте кнопки на экране или /cancel для отмены.")
+        api.send_message(
+            int(chat_id),
+            "На этом шаге нужно написать ответ сообщением внизу экрана (поле «Сообщение»). "
+            "Или используйте кнопки на экране. /cancel — отмена.",
+        )
         return
 
     save_session(session)
