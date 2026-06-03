@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", "")
+POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
+
+
+def api_request(method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not BOT_TOKEN:
+        raise RuntimeError("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN is not set")
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    data = None
+    headers: dict[str, str] = {}
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
+    with urlopen(request, timeout=POLL_TIMEOUT + 10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def send_message(chat_id: int, text: str, reply_markup: dict[str, Any] | None = None) -> int | None:
+    payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    result = api_request("sendMessage", payload)
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
+def edit_message(chat_id: int, message_id: int, text: str, reply_markup: dict[str, Any] | None = None) -> None:
+    payload: dict[str, Any] = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    api_request("editMessageText", payload)
+
+
+def answer_callback(callback_query_id: str, text: str = "") -> None:
+    payload: dict[str, Any] = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text[:200]
+    api_request("answerCallbackQuery", payload)
+
+
+def download_file(file_id: str) -> tuple[bytes, str]:
+    meta = api_request("getFile", {"file_id": file_id})
+    file_path = str((meta.get("result") or {}).get("file_path") or "")
+    if not file_path:
+        raise RuntimeError("Telegram getFile returned empty path")
+    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+    with urlopen(url, timeout=POLL_TIMEOUT + 10) as response:
+        content = response.read()
+    name = file_path.rsplit("/", 1)[-1]
+    return content, name
+
+
+def poll_updates(offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+    query = urlencode({"timeout": POLL_TIMEOUT, "offset": offset})
+    response = api_request(f"getUpdates?{query}")
+    updates = response.get("result") or []
+    new_offset = offset
+    for update in updates:
+        new_offset = max(new_offset, int(update.get("update_id", 0)) + 1)
+    return updates, new_offset

@@ -197,7 +197,7 @@ export ANAMNES_TELEGRAM_CHAT_ID="123456789"
 
 ## Telegram-бот для пациентов
 
-Отдельный файл `telegram_bot.py` запускает простого Telegram-бота-оболочку. Он не собирает анкету внутри Telegram, а выдает пациенту кнопку на веб-анкету нужного врача.
+`telegram_bot.py` + пакет `telegram_intake/` — пошаговая анкета **в Telegram** или переход на сайт.
 
 Ссылка для пациента:
 
@@ -205,11 +205,15 @@ export ANAMNES_TELEGRAM_CHAT_ID="123456789"
 https://t.me/<bot_username>?start=doctor_ivanova
 ```
 
-Бот откроет анкету:
+После `/start`:
+- **«Заполнить в Telegram»** — шаги 1–6 (контакты, причина, анамнез, файлы, отправка);
+- **«Открыть на сайте»** — веб-анкета `https://anamnes.ikorsakov.tech/?doctor=ivanova`.
 
-```text
-https://anamnes.ikorsakov.tech/?doctor=ivanova
-```
+Отправленные из Telegram анкеты сохраняются в Django (`Submission`) и уходят врачу по email/Telegram, как с сайта.
+
+Профильные блоки (щитовидка, диабет и т.д.) в Telegram пока кратко — подробнее на сайте; шаг 4 можно пропустить.
+
+Сессии черновика бота: `data/telegram_sessions/` (или `$ANAMNES_DATA_DIR/telegram_sessions/`).
 
 Создание:
 
@@ -234,9 +238,11 @@ python telegram_bot.py
 
 Команды бота:
 
-- `/start doctor_ivanova` — выдать ссылку врача `ivanova`;
-- `/doctors` — список врачей из `doctors.json`;
-- `/help` — помощь.
+- `/start doctor_ivanova` — начать анкету для врача `ivanova`;
+- `/doctors` — список врачей;
+- `/help` — помощь;
+- `/cancel` — отменить текущую анкету;
+- `/web` — ссылка на сайт (во время заполнения).
 
 Пример systemd-сервиса `/etc/systemd/system/anamnes-bot.service`:
 
