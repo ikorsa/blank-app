@@ -67,9 +67,20 @@ if systemctl is-active anamnes >/dev/null 2>&1; then
 else
   ok "Streamlit 'anamnes' not running (Django-only)"
 fi
-curl -sf -o /dev/null -w "HTTP %{http_code}\n" -H "Host: ${DOMAIN}" "http://127.0.0.1:8000/" \
-  && ok "Django responds on :8000 (Host: ${DOMAIN})" \
-  || warn "No response on 127.0.0.1:8000 — check: curl -H 'Host: ${DOMAIN}' http://127.0.0.1:8000/"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  -H "Host: ${DOMAIN}" \
+  -H "X-Forwarded-Proto: https" \
+  "http://127.0.0.1:8000/" || echo "000")
+if [[ "${HTTP_CODE}" =~ ^(200|302)$ ]]; then
+  ok "Django responds on :8000 (HTTP ${HTTP_CODE})"
+elif [[ "${HTTP_CODE}" == "301" ]]; then
+  ok "Django responds on :8000 (HTTP 301 redirect to HTTPS — normal without X-Forwarded-Proto)"
+else
+  warn "Unexpected HTTP ${HTTP_CODE} on 127.0.0.1:8000"
+fi
+curl -sf -o /dev/null -w "HTTPS %{http_code}\n" "https://${DOMAIN}/" \
+  && ok "Site reachable at https://${DOMAIN}/" \
+  || warn "https://${DOMAIN}/ not reachable"
 
 echo ""
 echo "=== TLS (${DOMAIN}) ==="
