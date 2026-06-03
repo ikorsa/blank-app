@@ -355,13 +355,13 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
 
     session = load_session(int(chat_id))
     if not session and data == "wiz:start":
-        api.answer_callback(callback_id, "Сначала /start doctor_КОД")
+        api.safe_answer_callback(callback_id, "Сначала /start doctor_КОД")
         return
     if not session:
-        api.answer_callback(callback_id)
+        api.safe_answer_callback(callback_id)
         return
 
-    api.answer_callback(callback_id)
+    api.safe_answer_callback(callback_id)
 
     if data == "wiz:start":
         _set_screen(session, "s1_full_name")
