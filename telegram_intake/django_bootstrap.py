@@ -6,6 +6,9 @@ import os
 def ensure_django() -> None:
     if getattr(ensure_django, "_ready", False):
         return
+    # Pick up config/database.env and project .env before settings load.
+    import anamnes_storage  # noqa: F401
+
     import django
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "anamnes_site.settings")
