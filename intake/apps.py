@@ -6,13 +6,18 @@ from django.conf import settings
 from django.core.checks import Warning, register
 
 
+def _secret_key_from_env() -> str:
+    return os.getenv("DJANGO_SECRET_KEY", "").strip()
+
+
 @register()
 def production_safety_check(app_configs, **kwargs):
     errors: list[Warning] = []
     if settings.DEBUG:
         return errors
 
-    if settings.SECRET_KEY == "dev-secret-key-change-me" or len(settings.SECRET_KEY) < 50:
+    secret = _secret_key_from_env()
+    if not secret or secret == "dev-secret-key-change-me" or len(secret) < 50:
         errors.append(
             Warning(
                 "Set a strong DJANGO_SECRET_KEY (50+ chars) when DJANGO_DEBUG=0.",
@@ -43,8 +48,9 @@ class IntakeConfig(AppConfig):
     def ready(self) -> None:
         if os.getenv("DJANGO_DEBUG", "1") != "0":
             return
-        if settings.SECRET_KEY == "dev-secret-key-change-me":
+        secret = _secret_key_from_env()
+        if not secret or secret == "dev-secret-key-change-me":
             warnings.warn(
-                "DJANGO_SECRET_KEY is still the dev default while DJANGO_DEBUG=0.",
+                "DJANGO_SECRET_KEY is missing or still the dev default while DJANGO_DEBUG=0.",
                 stacklevel=1,
             )
