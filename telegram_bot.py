@@ -2,7 +2,14 @@ import os
 import time
 import traceback
 
-from telegram_intake.api import answer_callback, api_request, poll_updates, safe_answer_callback, send_message
+from telegram_intake.api import (
+    TelegramNetworkError,
+    api_request,
+    poll_updates,
+    safe_answer_callback,
+    send_message,
+)
+from telegram_intake.choices import preload_wizard_choices, wizard_choices_error
 from telegram_intake.doctors import get_doctor, load_doctors
 from telegram_intake.picker import doctors_picker_keyboard
 from telegram_intake.session import ensure_session_storage, load_session
@@ -160,7 +167,26 @@ def handle_update(update: dict) -> None:
     if callback:
         if handle_doctor_pick(callback):
             return
-        handle_callback(callback, get_doctor)
+        try:
+            handle_callback(callback, get_doctor)
+        except Exception as exc:
+            print(f"Callback handler error: {exc}", flush=True)
+            print(traceback.format_exc(), flush=True)
+            message = callback.get("message") or {}
+            chat_id = _chat_id_from_message(message)
+            if chat_id is not None:
+                session = load_session(chat_id)
+                doctor_id = str((session or {}).get("doctor_id") or "").strip()
+                from telegram_intake.wizard import intake_url
+
+                site = intake_url(doctor_id) if doctor_id else f"https://anamnes.ikorsakov.tech/"
+                send_message(
+                    chat_id,
+                    "Не удалось продолжить анкету.\n"
+                    f"Откройте на сайте: {site}\n"
+                    "Или попробуйте /start или /doctors.",
+                )
+            return
         message = callback.get("message") or {}
         chat_id = _chat_id_from_message(message)
         data = str(callback.get("data") or "")
@@ -191,12 +217,16 @@ def ensure_polling_mode() -> None:
 
 def poll_forever() -> None:
     offset = 0
+    network_backoff = 5
     while True:
         try:
             updates, offset = poll_updates(offset)
+            network_backoff = 5
             for update in updates:
                 try:
                     handle_update(update)
+                except TelegramNetworkError as exc:
+                    print(f"Update handler network error: {exc}", flush=True)
                 except Exception as exc:
                     print(f"Update handler error: {exc}", flush=True)
                     print(traceback.format_exc(), flush=True)
@@ -205,11 +235,19 @@ def poll_forever() -> None:
                     if chat_id is not None:
                         try:
                             send_message(chat_id, "Произошла ошибка. Попробуйте /start или /doctors.")
+                        except TelegramNetworkError:
+                            pass
                         except Exception:
                             pass
+        except TelegramNetworkError as exc:
+            print(f"Telegram poll network error (retry in {network_backoff}s): {exc}", flush=True)
+            time.sleep(network_backoff)
+            network_backoff = min(network_backoff * 2, 60)
         except Exception as exc:
             print(f"Telegram bot error: {exc}", flush=True)
-            time.sleep(5)
+            print(traceback.format_exc(), flush=True)
+            time.sleep(network_backoff)
+            network_backoff = min(network_backoff * 2, 60)
 
 
 if __name__ == "__main__":
@@ -221,5 +259,14 @@ if __name__ == "__main__":
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
     ensure_polling_mode()
+    if preload_wizard_choices():
+        print("Wizard choices loaded.", flush=True)
+    else:
+        detail = wizard_choices_error() or "unknown error"
+        print(
+            f"WARNING: wizard choices not loaded ({detail}). "
+            "«Заполнить в Telegram» will show a site link until Django is fixed.",
+            flush=True,
+        )
     print("Telegram patient bot: polling started (wizard enabled).", flush=True)
     poll_forever()

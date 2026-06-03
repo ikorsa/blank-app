@@ -1,6 +1,13 @@
 from django.test import SimpleTestCase
 
-from telegram_intake.api import _prepare_payload
+from telegram_intake.api import (
+    POLL_HTTP_TIMEOUT,
+    POLL_TIMEOUT,
+    REQUEST_TIMEOUT,
+    TelegramNetworkError,
+    _prepare_payload,
+    api_request,
+)
 
 
 class TelegramApiPayloadTests(SimpleTestCase):
@@ -13,3 +20,20 @@ class TelegramApiPayloadTests(SimpleTestCase):
     def test_callback_query_id_is_string(self) -> None:
         payload = _prepare_payload({"callback_query_id": 999888777})
         self.assertEqual(payload["callback_query_id"], 999888777)
+
+    def test_poll_http_timeout_covers_long_poll(self) -> None:
+        self.assertGreater(POLL_HTTP_TIMEOUT, POLL_TIMEOUT)
+        self.assertGreaterEqual(REQUEST_TIMEOUT, 10)
+
+
+class TelegramNetworkErrorTests(SimpleTestCase):
+    def test_url_error_wrapped(self) -> None:
+        from unittest.mock import patch
+        from urllib.error import URLError
+
+        with patch("telegram_intake.api.BOT_TOKEN", "test-token"):
+            with patch("telegram_intake.api.urlopen", side_effect=URLError("timed out")):
+                with self.assertRaises(TelegramNetworkError) as ctx:
+                    api_request("getMe")
+        self.assertIn("network error", str(ctx.exception).lower())
+
