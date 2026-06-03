@@ -14,7 +14,7 @@ from .branches import (
     init_branch_flow,
     save_branch_value,
 )
-from .choices import wizard_choices
+from .choices import get_wizard_choices
 from .session import clear_session, load_session, new_session, save_session, step_data
 from .submit import submit_session
 
@@ -155,9 +155,18 @@ def _append_skip_profile_row(markup: dict[str, Any] | None) -> dict[str, Any] | 
     return markup
 
 
+def _wizard_unavailable_message(doctor_id: str) -> str:
+    site = intake_url(doctor_id) if doctor_id else PUBLIC_URL
+    return (
+        "Не удалось открыть анкету в Telegram.\n"
+        f"Откройте на сайте: {site}\n"
+        "Или попробуйте /start снова."
+    )
+
+
 def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
     screen = session["screen"]
-    choices = wizard_choices()
+    choices = get_wizard_choices()
     markup: dict[str, Any] | None = None
     prefix = progress_line(screen)
 
@@ -364,8 +373,21 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
     api.safe_answer_callback(callback_id)
 
     if data == "wiz:start":
+        doctor_id = str(session.get("doctor_id") or "").strip()
+        try:
+            get_wizard_choices()
+        except Exception as exc:
+            print(f"wiz:start choices failed: {exc}", flush=True)
+            api.send_message(int(chat_id), _wizard_unavailable_message(doctor_id))
+            return
         _set_screen(session, "s1_full_name")
-        send_screen(int(chat_id), session)
+        try:
+            send_screen(int(chat_id), session)
+        except Exception as exc:
+            print(f"wiz:start send_screen failed: {exc}", flush=True)
+            session["screen"] = "intro"
+            save_session(session)
+            api.send_message(int(chat_id), _wizard_unavailable_message(doctor_id))
         return
 
     if data == "nav:cancel":
