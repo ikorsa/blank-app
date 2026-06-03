@@ -73,6 +73,14 @@ if systemctl is-active anamnes >/dev/null 2>&1; then
   echo "Stopped legacy Streamlit service 'anamnes'."
 fi
 
+sed -e "s/^User=.*/User=${APP_USER}/" \
+    -e "s/^Group=.*/Group=${APP_GROUP}/" \
+    "${ANAMNES_ROOT}/deploy/anamnes-bot.service" > /etc/systemd/system/anamnes-bot.service
+systemctl daemon-reload
+systemctl enable anamnes-bot
+systemctl restart anamnes-bot
+echo "Installed and restarted anamnes-bot (User=${APP_USER}, .venv python)."
+
 ANAMNES_USER="${APP_USER}" bash "${ANAMNES_ROOT}/deploy/check-production.sh" || true
 
 echo ""
