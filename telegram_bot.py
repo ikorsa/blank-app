@@ -5,7 +5,7 @@ import traceback
 from telegram_intake.api import answer_callback, api_request, poll_updates, send_message
 from telegram_intake.doctors import get_doctor, load_doctors
 from telegram_intake.picker import doctors_picker_keyboard
-from telegram_intake.session import load_session
+from telegram_intake.session import ensure_session_storage, load_session
 from telegram_intake.wizard import (
     handle_callback,
     handle_file,
@@ -138,8 +138,20 @@ def handle_doctor_pick(callback: dict) -> bool:
         answer_callback(callback_id, "Врач не найден")
         send_message(chat_id, f"Врач «{doctor_id}» не найден. Попробуйте /doctors.")
         return True
-    answer_callback(callback_id, doctor.get("name", doctor_id))
-    start_wizard_for_doctor(chat_id, doctor)
+    try:
+        answer_callback(callback_id, "Выбран")
+        start_wizard_for_doctor(chat_id, doctor)
+    except Exception as exc:
+        print(f"Doctor pick failed ({doctor_id}): {exc}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        from telegram_intake.wizard import intake_url
+
+        send_message(
+            chat_id,
+            "Не удалось начать анкету.\n"
+            f"Откройте на сайте: {intake_url(doctor_id)}\n"
+            "Или попробуйте /start снова.",
+        )
     return True
 
 
@@ -185,8 +197,9 @@ def poll_forever() -> None:
             for update in updates:
                 try:
                     handle_update(update)
-                except Exception:
-                    print(f"Update handler error:\n{traceback.format_exc()}", flush=True)
+                except Exception as exc:
+                    print(f"Update handler error: {exc}", flush=True)
+                    print(traceback.format_exc(), flush=True)
                     message = update.get("message") or (update.get("callback_query") or {}).get("message") or {}
                     chat_id = _chat_id_from_message(message)
                     if chat_id is not None:
@@ -202,6 +215,11 @@ def poll_forever() -> None:
 if __name__ == "__main__":
     if not os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", ""):
         raise SystemExit("Set ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN before starting the bot.")
+    try:
+        storage = ensure_session_storage()
+        print(f"Telegram session storage: {storage}", flush=True)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     ensure_polling_mode()
     print("Telegram patient bot: polling started (wizard enabled).", flush=True)
     poll_forever()

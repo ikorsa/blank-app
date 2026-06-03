@@ -44,7 +44,8 @@ sudo -u "${APP_USER}" -H bash -lc "
 "
 
 mkdir -p "${ANAMNES_ROOT}/media/pending_uploads"
-chown -R "${APP_USER}:${APP_GROUP}" "${ANAMNES_ROOT}/media" "${ANAMNES_ROOT}/staticfiles" 2>/dev/null || true
+mkdir -p "${ANAMNES_ROOT}/data/telegram_sessions"
+chown -R "${APP_USER}:${APP_GROUP}" "${ANAMNES_ROOT}/media" "${ANAMNES_ROOT}/data" 2>/dev/null || true
 
 sed -e "s/^User=.*/User=${APP_USER}/" \
     -e "s/^Group=.*/Group=${APP_GROUP}/" \

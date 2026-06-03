@@ -62,6 +62,13 @@ fi
 echo ""
 echo "=== Services ==="
 systemctl is-active anamnes-django >/dev/null 2>&1 && ok "anamnes-django active" || warn "anamnes-django not active"
+systemctl is-active anamnes-bot >/dev/null 2>&1 && ok "anamnes-bot active" || warn "anamnes-bot not active"
+SESSION_DIR="${ANAMNES_ROOT}/data/telegram_sessions"
+if [[ -d "${SESSION_DIR}" && -w "${SESSION_DIR}" ]]; then
+  ok "Telegram session dir writable: ${SESSION_DIR}"
+else
+  warn "Fix: sudo mkdir -p ${SESSION_DIR} && sudo chown -R ikorsa:ikorsa ${ANAMNES_ROOT}/data"
+fi
 if systemctl is-active anamnes >/dev/null 2>&1; then
   warn "Streamlit 'anamnes' still active — run deploy/switch-to-django-only.sh after cutover"
 else

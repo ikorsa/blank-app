@@ -9,7 +9,10 @@ from typing import Any
 def session_dir() -> Path:
     base = Path(os.getenv("ANAMNES_DATA_DIR", "data"))
     path = base / "telegram_sessions"
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Cannot create telegram session dir {path}: {exc}") from exc
     return path
 
 
@@ -30,7 +33,23 @@ def load_session(chat_id: int) -> dict[str, Any] | None:
 
 def save_session(session: dict[str, Any]) -> None:
     chat_id = int(session["chat_id"])
-    session_path(chat_id).write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = session_path(chat_id)
+    try:
+        path.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"Cannot write telegram session {path}: {exc}") from exc
+
+
+def ensure_session_storage() -> Path:
+    """Verify bot can write wizard sessions (call on startup)."""
+    directory = session_dir()
+    probe = directory / ".write_probe"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Telegram session dir not writable: {directory} ({exc})") from exc
+    return directory
 
 
 def clear_session(chat_id: int) -> None:
