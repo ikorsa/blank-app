@@ -161,13 +161,6 @@ def handle_update(update: dict) -> None:
         if handle_doctor_pick(callback):
             return
         handle_callback(callback, get_doctor)
-        message = callback.get("message") or {}
-        chat_id = _chat_id_from_message(message)
-        data = str(callback.get("data") or "")
-        if chat_id is not None and data.endswith(":done") and data.startswith("s2"):
-            session = load_session(chat_id)
-            if session and session.get("screen") == "s2_reasons" and not session.get("multi_selected"):
-                send_message(chat_id, "Выберите хотя бы одну причину обращения.")
         return
 
     message = update.get("message")

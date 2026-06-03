@@ -361,6 +361,12 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         api.safe_answer_callback(callback_id)
         return
 
+    if (":t:" in data or data.endswith(":done")) and data.endswith(":done"):
+        prefix = data.rsplit(":done", 1)[0]
+        if prefix == "s2" and not session.get("multi_selected"):
+            api.safe_answer_callback(callback_id, "Выберите хотя бы одну причину обращения.")
+            return
+
     api.safe_answer_callback(callback_id)
 
     if data == "wiz:start":
@@ -422,17 +428,17 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         return
 
     if ":t:" in data or data.endswith(":done"):
+        prior_screen = session["screen"]
         _handle_multi_callback(session, data)
         save_session(session)
+        if session["screen"] != prior_screen:
+            send_screen(int(chat_id), session)
+            return
         message_id = message.get("message_id")
-        text, markup = prompt_for_screen(session)
-        if message_id and session["screen"] == session.get("_last_multi_screen"):
-            try:
-                api.edit_message(int(chat_id), int(message_id), text, markup)
+        if message_id:
+            text, markup = prompt_for_screen(session)
+            if api.try_edit_message(int(chat_id), int(message_id), text, markup):
                 return
-            except Exception:
-                pass
-        send_screen(int(chat_id), session)
         return
 
     _handle_single_choice(session, data)

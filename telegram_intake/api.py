@@ -58,6 +58,24 @@ def edit_message(chat_id: int, message_id: int, text: str, reply_markup: dict[st
     api_request("editMessageText", payload)
 
 
+def try_edit_message(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    reply_markup: dict[str, Any] | None = None,
+) -> bool:
+    """Edit inline keyboard in place; return True if message is up to date."""
+    try:
+        edit_message(chat_id, message_id, text, reply_markup)
+        return True
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if "message is not modified" in message:
+            return True
+        print(f"editMessageText warning: {exc}", flush=True)
+        return False
+
+
 def answer_callback(callback_query_id: str | int, text: str = "") -> None:
     query_id = str(callback_query_id).strip()
     if not query_id:

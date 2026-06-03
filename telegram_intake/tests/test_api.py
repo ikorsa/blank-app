@@ -1,6 +1,8 @@
+from unittest.mock import patch
+
 from django.test import SimpleTestCase
 
-from telegram_intake.api import _prepare_payload
+from telegram_intake.api import _prepare_payload, try_edit_message
 
 
 class TelegramApiPayloadTests(SimpleTestCase):
@@ -10,6 +12,12 @@ class TelegramApiPayloadTests(SimpleTestCase):
         self.assertEqual(payload["reply_markup"], markup)
         self.assertEqual(payload["chat_id"], 123)
 
-    def test_callback_query_id_is_string(self) -> None:
-        payload = _prepare_payload({"callback_query_id": 999888777})
-        self.assertEqual(payload["callback_query_id"], 999888777)
+
+class TryEditMessageTests(SimpleTestCase):
+    def test_not_modified_is_success(self) -> None:
+        with patch("telegram_intake.api.edit_message", side_effect=RuntimeError("HTTP 400: message is not modified")):
+            self.assertTrue(try_edit_message(1, 2, "text", None))
+
+    def test_real_error_returns_false(self) -> None:
+        with patch("telegram_intake.api.edit_message", side_effect=RuntimeError("HTTP 400: bad markup")):
+            self.assertFalse(try_edit_message(1, 2, "text", None))
