@@ -7,8 +7,10 @@ def doctor_short_label(doctor: dict[str, str]) -> str:
     name = str(doctor.get("name") or doctor.get("id") or "Врач")
     specialty = str(doctor.get("specialty") or "").strip()
     if specialty and len(name) + len(specialty) + 3 <= 60:
-        return f"{name} · {specialty}"
-    return name[:64]
+        label = f"{name} · {specialty}"
+    else:
+        label = name
+    return label[:64]
 
 
 def doctors_picker_keyboard(doctors: list[dict[str, str]]) -> dict[str, Any]:
