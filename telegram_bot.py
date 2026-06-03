@@ -1,8 +1,10 @@
 import os
 import time
+import traceback
 
 from telegram_intake.api import answer_callback, api_request, poll_updates, send_message
 from telegram_intake.doctors import get_doctor, load_doctors
+from telegram_intake.picker import doctors_picker_keyboard
 from telegram_intake.session import load_session
 from telegram_intake.wizard import (
     handle_callback,
@@ -34,11 +36,17 @@ def _load_local_env() -> None:
 _load_local_env()
 
 
-def doctor_label(doctor: dict[str, str]) -> str:
-    return f"{doctor['name']} ({doctor['specialty']})"
+def parse_start_payload(text: str) -> str:
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        return ""
+    payload = parts[1].strip().lower()
+    if payload.startswith("doctor_"):
+        payload = payload[len("doctor_") :]
+    return payload
 
 
-from telegram_intake.picker import doctor_short_label, doctors_picker_keyboard(chat_id: int, doctors: list[dict[str, str]], *, title: str) -> None:
+def send_doctor_picker(chat_id: int, doctors: list[dict[str, str]], *, title: str) -> None:
     if not doctors:
         send_message(chat_id, "Список врачей пока не настроен.")
         return
@@ -50,21 +58,16 @@ from telegram_intake.picker import doctor_short_label, doctors_picker_keyboard(c
     send_message(chat_id, text, doctors_picker_keyboard(doctors))
 
 
-def parse_start_payload(text: str) -> str:
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        return ""
-    payload = parts[1].strip().lower()
-    if payload.startswith("doctor_"):
-        payload = payload[len("doctor_") :]
-    return payload
+def _chat_id_from_message(message: dict) -> int | None:
+    chat = message.get("chat") or {}
+    raw = chat.get("id")
+    return int(raw) if raw is not None else None
 
 
 def handle_command(message: dict) -> None:
-    chat = message.get("chat", {})
-    chat_id = chat.get("id")
+    chat_id = _chat_id_from_message(message)
     text = str(message.get("text") or "").strip()
-    if not chat_id:
+    if chat_id is None:
         return
 
     doctors = load_doctors()
@@ -73,23 +76,23 @@ def handle_command(message: dict) -> None:
         doctor_id = parse_start_payload(text)
         doctor = get_doctor(doctor_id) if doctor_id else None
         if doctor:
-            start_wizard_for_doctor(int(chat_id), doctor)
+            start_wizard_for_doctor(chat_id, doctor)
             return
         if doctor_id:
             send_message(chat_id, f"Врач с кодом '{doctor_id}' не найден. Проверьте ссылку или /doctors.")
             return
         if len(doctors) == 1:
-            start_wizard_for_doctor(int(chat_id), doctors[0])
+            start_wizard_for_doctor(chat_id, doctors[0])
             return
         send_doctor_picker(
-            int(chat_id),
+            chat_id,
             doctors,
             title="Здравствуйте! Выберите врача для анкеты перед приёмом:",
         )
         return
 
     if text.startswith("/doctors"):
-        send_doctor_picker(int(chat_id), doctors, title="Доступные врачи:")
+        send_doctor_picker(chat_id, doctors, title="Доступные врачи:")
         return
 
     if text.startswith("/help"):
@@ -108,7 +111,7 @@ def handle_command(message: dict) -> None:
         )
         return
 
-    if load_session(int(chat_id)):
+    if load_session(chat_id):
         handle_text(message)
         return
 
@@ -126,18 +129,17 @@ def handle_doctor_pick(callback: dict) -> bool:
         return False
     doctor_id = data.split(":", 1)[1].strip().lower()
     message = callback.get("message") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
+    chat_id = _chat_id_from_message(message)
     callback_id = str(callback.get("id") or "")
-    if not chat_id:
+    if chat_id is None:
         return True
     doctor = get_doctor(doctor_id)
     if not doctor:
         answer_callback(callback_id, "Врач не найден")
-        send_message(int(chat_id), f"Врач «{doctor_id}» не найден. Попробуйте /doctors.")
+        send_message(chat_id, f"Врач «{doctor_id}» не найден. Попробуйте /doctors.")
         return True
     answer_callback(callback_id, doctor.get("name", doctor_id))
-    start_wizard_for_doctor(int(chat_id), doctor)
+    start_wizard_for_doctor(chat_id, doctor)
     return True
 
 
@@ -148,13 +150,12 @@ def handle_update(update: dict) -> None:
             return
         handle_callback(callback, get_doctor)
         message = callback.get("message") or {}
-        chat = message.get("chat") or {}
-        chat_id = chat.get("id")
+        chat_id = _chat_id_from_message(message)
         data = str(callback.get("data") or "")
-        if chat_id and data.endswith(":done") and data.startswith("s2"):
-            session = load_session(int(chat_id))
+        if chat_id is not None and data.endswith(":done") and data.startswith("s2"):
+            session = load_session(chat_id)
             if session and session.get("screen") == "s2_reasons" and not session.get("multi_selected"):
-                send_message(int(chat_id), "Выберите хотя бы одну причину обращения.")
+                send_message(chat_id, "Выберите хотя бы одну причину обращения.")
         return
 
     message = update.get("message")
@@ -182,7 +183,17 @@ def poll_forever() -> None:
         try:
             updates, offset = poll_updates(offset)
             for update in updates:
-                handle_update(update)
+                try:
+                    handle_update(update)
+                except Exception:
+                    print(f"Update handler error:\n{traceback.format_exc()}", flush=True)
+                    message = update.get("message") or (update.get("callback_query") or {}).get("message") or {}
+                    chat_id = _chat_id_from_message(message)
+                    if chat_id is not None:
+                        try:
+                            send_message(chat_id, "Произошла ошибка. Попробуйте /start или /doctors.")
+                        except Exception:
+                            pass
         except Exception as exc:
             print(f"Telegram bot error: {exc}", flush=True)
             time.sleep(5)
