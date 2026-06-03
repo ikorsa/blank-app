@@ -76,6 +76,27 @@ def try_edit_message(
         return False
 
 
+def edit_reply_markup(chat_id: int, message_id: int, reply_markup: dict[str, Any]) -> None:
+    payload: dict[str, Any] = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "reply_markup": reply_markup,
+    }
+    api_request("editMessageReplyMarkup", payload)
+
+
+def try_edit_reply_markup(chat_id: int, message_id: int, reply_markup: dict[str, Any]) -> bool:
+    try:
+        edit_reply_markup(chat_id, message_id, reply_markup)
+        return True
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if "message is not modified" in message:
+            return True
+        print(f"editMessageReplyMarkup warning: {exc}", flush=True)
+        return False
+
+
 def answer_callback(callback_query_id: str | int, text: str = "") -> None:
     query_id = str(callback_query_id).strip()
     if not query_id:

@@ -291,8 +291,25 @@ def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | No
     return text, markup
 
 
+def _multi_field_for_prefix(prefix: str) -> str:
+    return {
+        "s1_urg": "step1.urgent_symptoms",
+        "s2": "step2.main_reasons",
+        "s3_chron": "step3.chronic_conditions",
+        "s3_med": "step3.medications",
+        "s3_fam": "step3.family_history",
+    }.get(prefix, "")
+
+
+def _ensure_multi_field(session: dict[str, Any], prefix: str) -> None:
+    field_key = _multi_field_for_prefix(prefix)
+    if field_key:
+        session["multi_field"] = field_key
+
+
 def send_screen(chat_id: int, session: dict[str, Any]) -> None:
     text, markup = prompt_for_screen(session)
+    save_session(session)
     api.send_message(chat_id, text, markup)
 
 
@@ -438,7 +455,12 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         if message_id:
             text, markup = prompt_for_screen(session)
             if api.try_edit_message(int(chat_id), int(message_id), text, markup):
+                save_session(session)
                 return
+            if markup and api.try_edit_reply_markup(int(chat_id), int(message_id), markup):
+                save_session(session)
+                return
+        send_screen(int(chat_id), session)
         return
 
     _handle_single_choice(session, data)
@@ -450,6 +472,7 @@ def _handle_multi_callback(session: dict[str, Any], data: str) -> None:
     session["_last_multi_screen"] = session["screen"]
     if data.endswith(":done"):
         prefix = data.rsplit(":done", 1)[0]
+        _ensure_multi_field(session, prefix)
         _save_multi(session)
         if session.get("screen") == "s4_branch":
             _set_screen(session, advance_branch(session))
@@ -459,7 +482,8 @@ def _handle_multi_callback(session: dict[str, Any], data: str) -> None:
     match = re.match(r"^(.+):t:(.+)$", data)
     if not match:
         return
-    code = match.group(2)
+    prefix, code = match.group(1), match.group(2)
+    _ensure_multi_field(session, prefix)
     selected = list(session.get("multi_selected") or [])
     if code in selected:
         selected.remove(code)
