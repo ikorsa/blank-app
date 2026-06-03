@@ -13,12 +13,10 @@ POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
 
 def _prepare_payload(payload: dict[str, Any]) -> dict[str, Any]:
     prepared = dict(payload)
-    markup = prepared.get("reply_markup")
-    if isinstance(markup, dict):
-        # Telegram Bot API expects reply_markup as a JSON-encoded string.
-        prepared["reply_markup"] = json.dumps(markup, ensure_ascii=False)
     if "chat_id" in prepared and prepared["chat_id"] is not None:
         prepared["chat_id"] = int(prepared["chat_id"])
+    if "message_id" in prepared and prepared["message_id"] is not None:
+        prepared["message_id"] = int(prepared["message_id"])
     return prepared
 
 
@@ -60,11 +58,24 @@ def edit_message(chat_id: int, message_id: int, text: str, reply_markup: dict[st
     api_request("editMessageText", payload)
 
 
-def answer_callback(callback_query_id: str, text: str = "") -> None:
-    payload: dict[str, Any] = {"callback_query_id": callback_query_id}
+def answer_callback(callback_query_id: str | int, text: str = "") -> None:
+    query_id = str(callback_query_id).strip()
+    if not query_id:
+        return
+    payload: dict[str, Any] = {"callback_query_id": query_id}
     if text:
         payload["text"] = text[:200]
     api_request("answerCallbackQuery", payload)
+
+
+def safe_answer_callback(callback_query_id: str | int, text: str = "") -> None:
+    try:
+        answer_callback(callback_query_id, text)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "query is too old" in message or "query id is invalid" in message:
+            return
+        print(f"answerCallbackQuery warning: {exc}", flush=True)
 
 
 def download_file(file_id: str) -> tuple[bytes, str]:

@@ -2,7 +2,7 @@ import os
 import time
 import traceback
 
-from telegram_intake.api import answer_callback, api_request, poll_updates, send_message
+from telegram_intake.api import answer_callback, api_request, poll_updates, safe_answer_callback, send_message
 from telegram_intake.doctors import get_doctor, load_doctors
 from telegram_intake.picker import doctors_picker_keyboard
 from telegram_intake.session import ensure_session_storage, load_session
@@ -135,11 +135,11 @@ def handle_doctor_pick(callback: dict) -> bool:
         return True
     doctor = get_doctor(doctor_id)
     if not doctor:
-        answer_callback(callback_id, "Врач не найден")
+        safe_answer_callback(callback_id)
         send_message(chat_id, f"Врач «{doctor_id}» не найден. Попробуйте /doctors.")
         return True
+    safe_answer_callback(callback_id)
     try:
-        answer_callback(callback_id, "Выбран")
         start_wizard_for_doctor(chat_id, doctor)
     except Exception as exc:
         print(f"Doctor pick failed ({doctor_id}): {exc}", flush=True)
