@@ -14,7 +14,7 @@ from .branches import (
     init_branch_flow,
     save_branch_value,
 )
-from .choices import wizard_choices
+from .choices import get_wizard_choices
 from .session import clear_session, load_session, new_session, save_session, step_data
 from .submit import submit_session
 
@@ -161,7 +161,7 @@ def _append_skip_profile_row(markup: dict[str, Any] | None) -> dict[str, Any] | 
 
 def prompt_for_screen(session: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
     screen = session["screen"]
-    choices = wizard_choices()
+    choices = get_wizard_choices()
     markup: dict[str, Any] | None = None
     prefix = progress_line(screen)
 
@@ -307,6 +307,26 @@ def _multi_field_for_prefix(prefix: str) -> str:
     }.get(prefix, "")
 
 
+def _multi_prefix_for_screen(screen: str) -> str:
+    return {
+        "s1_urgent": "s1_urg",
+        "s2_reasons": "s2",
+        "s3_chronic": "s3_chron",
+        "s3_medications": "s3_med",
+        "s3_family": "s3_fam",
+    }.get(screen, "")
+
+
+def _callback_matches_multi_screen(session: dict[str, Any], data: str) -> bool:
+    screen = str(session.get("screen") or "")
+    if screen == "s4_branch":
+        return data.startswith("b4:") and (":t:" in data or data.endswith(":done"))
+    expected = _multi_prefix_for_screen(screen)
+    if not expected:
+        return True
+    return data == f"{expected}:done" or data.startswith(f"{expected}:t:")
+
+
 def _ensure_multi_field(session: dict[str, Any], prefix: str) -> None:
     field_key = _multi_field_for_prefix(prefix)
     if field_key:
@@ -389,6 +409,10 @@ def handle_callback(callback: dict[str, Any], doctor_lookup) -> None:
         if prefix == "s2" and not session.get("multi_selected"):
             api.safe_answer_callback(callback_id, "Выберите хотя бы одну причину обращения.")
             return
+
+    if (":t:" in data or data.endswith(":done")) and not _callback_matches_multi_screen(session, data):
+        api.safe_answer_callback(callback_id, "Используйте кнопки в последнем сообщении бота")
+        return
 
     api.safe_answer_callback(callback_id)
 

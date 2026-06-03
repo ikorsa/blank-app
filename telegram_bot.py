@@ -3,7 +3,7 @@ import time
 import traceback
 
 from telegram_intake.api import answer_callback, api_request, poll_updates, safe_answer_callback, send_message
-from telegram_intake.doctors import get_doctor, load_doctors
+from telegram_intake.choices import preload_wizard_choices, wizard_choices_error
 from telegram_intake.picker import doctors_picker_keyboard
 from telegram_intake.session import ensure_session_storage, load_session
 from telegram_intake.wizard import (
@@ -160,7 +160,25 @@ def handle_update(update: dict) -> None:
     if callback:
         if handle_doctor_pick(callback):
             return
-        handle_callback(callback, get_doctor)
+        try:
+            handle_callback(callback, get_doctor)
+        except Exception as exc:
+            print(f"Callback handler error: {exc}", flush=True)
+            print(traceback.format_exc(), flush=True)
+            message = callback.get("message") or {}
+            chat_id = _chat_id_from_message(message)
+            if chat_id is not None:
+                session = load_session(chat_id)
+                screen = (session or {}).get("screen", "")
+                try:
+                    send_message(
+                        chat_id,
+                        "Не удалось обработать нажатие.\n"
+                        "Используйте кнопки в **последнем** сообщении бота.\n"
+                        f"Текущий шаг сохранён ({screen or 'неизвестно'}). /cancel — начать заново.",
+                    )
+                except Exception:
+                    pass
         return
 
     message = update.get("message")
@@ -214,5 +232,10 @@ if __name__ == "__main__":
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
     ensure_polling_mode()
+    if preload_wizard_choices():
+        print("Wizard choices loaded.", flush=True)
+    else:
+        detail = wizard_choices_error() or "unknown error"
+        print(f"WARNING: wizard choices not loaded ({detail})", flush=True)
     print("Telegram patient bot: polling started (wizard enabled).", flush=True)
     poll_forever()
