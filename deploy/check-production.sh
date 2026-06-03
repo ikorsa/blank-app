@@ -67,7 +67,9 @@ if systemctl is-active anamnes >/dev/null 2>&1; then
 else
   ok "Streamlit 'anamnes' not running (Django-only)"
 fi
-curl -sf -o /dev/null -w "HTTP %{http_code}\n" "http://127.0.0.1:8000/" && ok "Django responds on :8000" || warn "No response on 127.0.0.1:8000"
+curl -sf -o /dev/null -w "HTTP %{http_code}\n" -H "Host: ${DOMAIN}" "http://127.0.0.1:8000/" \
+  && ok "Django responds on :8000 (Host: ${DOMAIN})" \
+  || warn "No response on 127.0.0.1:8000 — check: curl -H 'Host: ${DOMAIN}' http://127.0.0.1:8000/"
 
 echo ""
 echo "=== TLS (${DOMAIN}) ==="
