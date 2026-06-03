@@ -63,6 +63,26 @@ echo ""
 echo "=== Services ==="
 systemctl is-active anamnes-django >/dev/null 2>&1 && ok "anamnes-django active" || warn "anamnes-django not active"
 systemctl is-active anamnes-bot >/dev/null 2>&1 && ok "anamnes-bot active" || warn "anamnes-bot not active"
+
+VENV_PY="${ANAMNES_ROOT}/.venv/bin/python"
+if systemctl is-active anamnes-bot >/dev/null 2>&1; then
+  bot_pid="$(systemctl show anamnes-bot -p MainPID --value 2>/dev/null || echo 0)"
+  if [[ -n "${bot_pid}" && "${bot_pid}" != "0" ]]; then
+    bot_exe="$(readlink -f "/proc/${bot_pid}/exe" 2>/dev/null || true)"
+    if [[ "${bot_exe}" == "${VENV_PY}" ]]; then
+      ok "anamnes-bot uses venv python (${bot_exe})"
+    else
+      warn "anamnes-bot uses wrong python: ${bot_exe:-unknown} (expected ${VENV_PY})"
+      warn "Fix: sudo bash ${ANAMNES_ROOT}/deploy/fix-anamnes-bot-service.sh"
+    fi
+  fi
+  if [[ -f /etc/systemd/system/anamnes-bot.service ]]; then
+    grep -q "${VENV_PY}" /etc/systemd/system/anamnes-bot.service \
+      && ok "anamnes-bot.service ExecStart uses .venv" \
+      || warn "anamnes-bot.service ExecStart is not ${VENV_PY} — run deploy/fix-anamnes-bot-service.sh"
+  fi
+fi
+
 SESSION_DIR="${ANAMNES_ROOT}/data/telegram_sessions"
 if [[ -d "${SESSION_DIR}" && -w "${SESSION_DIR}" ]]; then
   ok "Telegram session dir writable: ${SESSION_DIR}"
@@ -88,6 +108,17 @@ fi
 curl -sf -o /dev/null -w "HTTPS %{http_code}\n" "https://${DOMAIN}/" \
   && ok "Site reachable at https://${DOMAIN}/" \
   || warn "https://${DOMAIN}/ not reachable"
+
+echo ""
+echo "=== Telegram API ==="
+TG_CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 https://api.telegram.org/ || echo "000")
+if [[ "${TG_CODE}" == "200" ]]; then
+  ok "api.telegram.org reachable (HTTP 200)"
+elif [[ "${TG_CODE}" == "000" ]]; then
+  warn "api.telegram.org timeout/unreachable — bot buttons may fail; check VPS firewall/ISP"
+else
+  ok "api.telegram.org responded (HTTP ${TG_CODE})"
+fi
 
 echo ""
 echo "=== TLS (${DOMAIN}) ==="

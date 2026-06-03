@@ -82,6 +82,14 @@ sudo systemctl start anamnes anamnes-bot
 sudo systemctl status anamnes anamnes-bot --no-pager
 ```
 
+Если в `journalctl -u anamnes-bot` видно `/home/.../anaconda3/` — бот запущен не через `.venv`. Исправление:
+
+```bash
+sudo bash /opt/anamnes/deploy/fix-anamnes-bot-service.sh
+grep ExecStart /etc/systemd/system/anamnes-bot.service
+# должно быть: ExecStart=/opt/anamnes/.venv/bin/python /opt/anamnes/telegram_bot.py
+```
+
 Проверка локально на сервере: `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9090`
 
 ## 5. Nginx + HTTPS
