@@ -2,7 +2,13 @@ import os
 import time
 import traceback
 
-from telegram_intake.api import answer_callback, api_request, poll_updates, safe_answer_callback, send_message
+from telegram_intake.api import (
+    TelegramNetworkError,
+    api_request,
+    poll_updates,
+    safe_answer_callback,
+    send_message,
+)
 from telegram_intake.choices import preload_wizard_choices, wizard_choices_error
 from telegram_intake.doctors import get_doctor, load_doctors
 from telegram_intake.picker import doctors_picker_keyboard
@@ -211,12 +217,16 @@ def ensure_polling_mode() -> None:
 
 def poll_forever() -> None:
     offset = 0
+    network_backoff = 5
     while True:
         try:
             updates, offset = poll_updates(offset)
+            network_backoff = 5
             for update in updates:
                 try:
                     handle_update(update)
+                except TelegramNetworkError as exc:
+                    print(f"Update handler network error: {exc}", flush=True)
                 except Exception as exc:
                     print(f"Update handler error: {exc}", flush=True)
                     print(traceback.format_exc(), flush=True)
@@ -225,11 +235,19 @@ def poll_forever() -> None:
                     if chat_id is not None:
                         try:
                             send_message(chat_id, "Произошла ошибка. Попробуйте /start или /doctors.")
+                        except TelegramNetworkError:
+                            pass
                         except Exception:
                             pass
+        except TelegramNetworkError as exc:
+            print(f"Telegram poll network error (retry in {network_backoff}s): {exc}", flush=True)
+            time.sleep(network_backoff)
+            network_backoff = min(network_backoff * 2, 60)
         except Exception as exc:
             print(f"Telegram bot error: {exc}", flush=True)
-            time.sleep(5)
+            print(traceback.format_exc(), flush=True)
+            time.sleep(network_backoff)
+            network_backoff = min(network_backoff * 2, 60)
 
 
 if __name__ == "__main__":

@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 BOT_TOKEN = os.getenv("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN", "")
 POLL_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_POLL_TIMEOUT", "30"))
+REQUEST_TIMEOUT = int(os.getenv("ANAMNES_TELEGRAM_REQUEST_TIMEOUT", "30"))
+POLL_HTTP_TIMEOUT = POLL_TIMEOUT + int(os.getenv("ANAMNES_TELEGRAM_POLL_GRACE", "25"))
+
+
+class TelegramNetworkError(RuntimeError):
+    """Telegram Bot API call failed due to network/connectivity."""
 
 
 def _prepare_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -20,7 +26,12 @@ def _prepare_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return prepared
 
 
-def api_request(method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def api_request(
+    method: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    http_timeout: int | None = None,
+) -> dict[str, Any]:
     if not BOT_TOKEN:
         raise RuntimeError("ANAMNES_TELEGRAM_PATIENT_BOT_TOKEN is not set")
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
@@ -30,12 +41,18 @@ def api_request(method: str, payload: dict[str, Any] | None = None) -> dict[str,
         data = json.dumps(_prepare_payload(payload), ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
+    timeout = REQUEST_TIMEOUT if http_timeout is None else http_timeout
     try:
-        with urlopen(request, timeout=POLL_TIMEOUT + 10) as response:
+        with urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Telegram API {method} HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        raise TelegramNetworkError(f"Telegram API {method} network error: {reason}") from exc
+    except TimeoutError as exc:
+        raise TelegramNetworkError(f"Telegram API {method} timed out after {timeout}s") from exc
 
     if not body.get("ok", True):
         raise RuntimeError(f"Telegram API {method} failed: {body}")
@@ -84,15 +101,19 @@ def download_file(file_id: str) -> tuple[bytes, str]:
     if not file_path:
         raise RuntimeError("Telegram getFile returned empty path")
     url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-    with urlopen(url, timeout=POLL_TIMEOUT + 10) as response:
-        content = response.read()
+    try:
+        with urlopen(url, timeout=REQUEST_TIMEOUT + 30) as response:
+            content = response.read()
+    except URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        raise TelegramNetworkError(f"Telegram file download network error: {reason}") from exc
     name = file_path.rsplit("/", 1)[-1]
     return content, name
 
 
 def poll_updates(offset: int = 0) -> tuple[list[dict[str, Any]], int]:
     query = urlencode({"timeout": POLL_TIMEOUT, "offset": offset})
-    response = api_request(f"getUpdates?{query}")
+    response = api_request(f"getUpdates?{query}", http_timeout=POLL_HTTP_TIMEOUT)
     updates = response.get("result") or []
     new_offset = offset
     for update in updates:
