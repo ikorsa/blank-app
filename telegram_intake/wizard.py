@@ -132,6 +132,9 @@ def _doctor_label(doctor: dict[str, str]) -> str:
 
 
 def send_intro(chat_id: int, doctor: dict[str, str]) -> None:
+    doctor_id = str(doctor.get("id") or "").strip()
+    if not doctor_id:
+        raise RuntimeError("Doctor id is missing")
     text = (
         f"Здравствуйте!\n\n"
         f"Анкета перед приёмом эндокринолога (10–15 минут).\n\n"
@@ -140,7 +143,7 @@ def send_intro(chat_id: int, doctor: dict[str, str]) -> None:
         "• Не заменяет скорую помощь при острых симптомах\n\n"
         "Выберите способ:"
     )
-    api.send_message(chat_id, text, intro_keyboard(doctor["id"]))
+    api.send_message(chat_id, text, intro_keyboard(doctor_id))
 
 
 def _append_skip_profile_row(markup: dict[str, Any] | None) -> dict[str, Any] | None:
