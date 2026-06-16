@@ -183,6 +183,7 @@ def build_markdown_pdf(markdown_text: str, title: str) -> bytes:
     story: list = [Paragraph(_inline_markup(title), styles["h1"]), Spacer(1, 4 * mm)]
     lines = markdown_text.splitlines()
     i = 0
+    skip_first_h1 = True
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
@@ -198,6 +199,11 @@ def build_markdown_pdf(markdown_text: str, title: str) -> bytes:
             continue
 
         if stripped.startswith("# ") and not stripped.startswith("## "):
+            heading = re.sub(r"\*\*(.+?)\*\*", r"\1", stripped[2:]).strip()
+            if skip_first_h1 and heading == title:
+                skip_first_h1 = False
+                i += 1
+                continue
             story.append(Paragraph(_inline_markup(stripped[2:]), styles["h1"]))
             i += 1
             continue
