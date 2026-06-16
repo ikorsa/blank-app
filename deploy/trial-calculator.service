@@ -1,0 +1,17 @@
+[Unit]
+Description=Clinical trials sample size calculator (Streamlit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anamnes
+Group=anamnes
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/trial-calculator.env
+ExecStart=/opt/anamnes/.venv/bin/streamlit run trial_calculator_app.py --config .streamlit/trial-calculator.toml --server.address=127.0.0.1 --server.port=8081 --server.headless=true
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
