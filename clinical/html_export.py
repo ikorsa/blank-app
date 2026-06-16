@@ -30,15 +30,24 @@ def build_markdown_html(markdown_text: str, title: str) -> str:
         '<meta charset="utf-8">',
         f"<title>{html.escape(title)}</title>",
         "<style>",
-        "body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 2cm; }",
-        "h1 { text-align: center; font-size: 18pt; }",
-        "h2 { font-size: 14pt; margin-top: 18px; }",
-        "h3 { font-size: 12pt; margin-top: 14px; }",
-        "table { border-collapse: collapse; width: 100%; margin: 12px 0; }",
-        "th, td { border: 1px solid #444; padding: 6px; vertical-align: top; }",
+        "body {",
+        "  font-family: 'Times New Roman', serif;",
+        "  font-size: 12pt;",
+        "  line-height: 1.5;",
+        "  max-width: 17cm;",
+        "  margin: 2cm auto;",
+        "  padding: 0 0.5cm;",
+        "  text-align: justify;",
+        "}",
+        "h1 { text-align: center; font-size: 16pt; line-height: 1.3; }",
+        "h2 { font-size: 13pt; margin-top: 1.2em; line-height: 1.35; }",
+        "h3 { font-size: 12pt; margin-top: 1em; line-height: 1.35; }",
+        "p { margin: 0.4em 0 0.7em; }",
+        "table { border-collapse: collapse; width: 100%; margin: 12px 0; table-layout: fixed; }",
+        "th, td { border: 1px solid #444; padding: 6px 8px; vertical-align: top; word-wrap: break-word; font-size: 11pt; }",
         "th { background: #e8eef7; }",
-        "blockquote { margin-left: 1cm; color: #333; font-style: italic; }",
-        "ul, ol { margin-top: 0; }",
+        "blockquote { margin: 0.8em 0 0.8em 1cm; color: #333; font-style: italic; font-size: 11pt; }",
+        "ul, ol { margin-top: 0; padding-left: 1.2cm; }",
         "</style>",
         "</head>",
         "<body>",
@@ -85,7 +94,20 @@ def build_markdown_html(markdown_text: str, title: str) -> str:
                     rows.append([cell.strip() for cell in row_line.strip("|").split("|")])
                 i += 1
             if rows:
+                col_count = len(rows[0])
+                if col_count == 4:
+                    widths = ["18%", "22%", "24%", "36%"]
+                elif col_count == 3:
+                    widths = ["22%", "30%", "48%"]
+                elif col_count == 2:
+                    widths = ["32%", "68%"]
+                else:
+                    widths = [f"{100 // col_count}%" for _ in range(col_count)]
                 parts.append("<table>")
+                parts.append("<colgroup>")
+                for width in widths:
+                    parts.append(f'<col style="width:{width}">')
+                parts.append("</colgroup>")
                 for r_idx, row in enumerate(rows):
                     parts.append("<tr>")
                     tag = "th" if r_idx == 0 else "td"

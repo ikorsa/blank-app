@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -15,6 +16,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 PDF_FONT_NAME = "DejaVuSans"
+PAGE_MARGIN_MM = 28
 
 
 def register_pdf_font() -> str:
@@ -58,19 +60,21 @@ def _make_styles(font_name: str) -> dict[str, ParagraphStyle]:
             "MdH1",
             parent=base["Heading1"],
             fontName=font_name,
-            fontSize=18,
-            leading=22,
-            spaceBefore=6,
+            fontSize=16,
+            leading=20,
+            spaceBefore=8,
             spaceAfter=10,
+            alignment=TA_JUSTIFY,
         ),
         "h2": ParagraphStyle(
             "MdH2",
             parent=base["Heading2"],
             fontName=font_name,
-            fontSize=14,
-            leading=18,
-            spaceBefore=10,
+            fontSize=13,
+            leading=17,
+            spaceBefore=12,
             spaceAfter=6,
+            alignment=TA_JUSTIFY,
         ),
         "h3": ParagraphStyle(
             "MdH3",
@@ -80,60 +84,82 @@ def _make_styles(font_name: str) -> dict[str, ParagraphStyle]:
             leading=15,
             spaceBefore=8,
             spaceAfter=4,
+            alignment=TA_JUSTIFY,
         ),
         "normal": ParagraphStyle(
             "MdNormal",
             parent=base["Normal"],
             fontName=font_name,
-            fontSize=10,
-            leading=14,
-            spaceAfter=4,
+            fontSize=11,
+            leading=15,
+            spaceAfter=6,
+            alignment=TA_JUSTIFY,
         ),
         "bullet": ParagraphStyle(
             "MdBullet",
             parent=base["Normal"],
             fontName=font_name,
-            fontSize=10,
-            leading=14,
-            leftIndent=12,
+            fontSize=11,
+            leading=15,
+            leftIndent=10,
             bulletIndent=0,
-            spaceAfter=2,
+            spaceAfter=3,
+            alignment=TA_JUSTIFY,
         ),
         "quote": ParagraphStyle(
             "MdQuote",
             parent=base["Normal"],
             fontName=font_name,
-            fontSize=10,
+            fontSize=10.5,
             leading=14,
-            leftIndent=14,
+            leftIndent=12,
+            rightIndent=6,
             textColor=colors.HexColor("#333333"),
-            spaceAfter=6,
+            spaceAfter=8,
+            alignment=TA_JUSTIFY,
         ),
     }
 
 
-def _table_from_rows(rows: list[list[str]], styles: dict[str, ParagraphStyle]) -> Table:
-    wrapped = [
-        [Paragraph(cell, styles["normal"]) for cell in row]
-        for row in rows
-    ]
+def _table_col_widths(col_count: int, available_mm: float) -> list[float]:
+    if col_count == 4:
+        weights = [0.18, 0.22, 0.24, 0.36]
+    elif col_count == 3:
+        weights = [0.22, 0.30, 0.48]
+    elif col_count == 2:
+        weights = [0.32, 0.68]
+    else:
+        weights = [1.0 / col_count] * col_count
+    return [available_mm * weight * mm for weight in weights]
+
+
+def _table_from_rows(rows: list[list[str]], styles: dict[str, ParagraphStyle], available_mm: float) -> Table:
+    cell_style = ParagraphStyle(
+        "MdTableCell",
+        parent=styles["normal"],
+        fontSize=9.5,
+        leading=12,
+        alignment=TA_JUSTIFY,
+    )
+    wrapped = [[Paragraph(cell, cell_style) for cell in row] for row in rows]
     col_count = max(len(row) for row in wrapped)
-    available = 174 * mm
-    col_width = available / col_count
-    table = Table(wrapped, colWidths=[col_width] * col_count, repeatRows=1)
+    table = Table(
+        wrapped,
+        colWidths=_table_col_widths(col_count, available_mm),
+        repeatRows=1,
+    )
     table.setStyle(
         TableStyle(
             [
                 ("FONTNAME", (0, 0), (-1, -1), styles["normal"].fontName),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF7")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1A1A1A")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#B0B8C4")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ]
         )
     )
@@ -147,11 +173,12 @@ def build_markdown_pdf(markdown_text: str, title: str) -> bytes:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
+        leftMargin=PAGE_MARGIN_MM * mm,
+        rightMargin=PAGE_MARGIN_MM * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
     )
+    available_mm = (A4[0] / mm) - (2 * PAGE_MARGIN_MM)
 
     story: list = [Paragraph(_inline_markup(title), styles["h1"]), Spacer(1, 4 * mm)]
     lines = markdown_text.splitlines()
@@ -193,7 +220,7 @@ def build_markdown_pdf(markdown_text: str, title: str) -> bytes:
                     table_rows.append(_parse_table_row(row_line))
                 i += 1
             if table_rows:
-                story.append(_table_from_rows(table_rows, styles))
+                story.append(_table_from_rows(table_rows, styles, available_mm))
                 story.append(Spacer(1, 3 * mm))
             continue
 
@@ -237,10 +264,10 @@ def build_text_pdf(body: str, title: str) -> bytes:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
+        leftMargin=PAGE_MARGIN_MM * mm,
+        rightMargin=PAGE_MARGIN_MM * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
     )
     story = [Paragraph(_inline_markup(title), styles["h1"]), Spacer(1, 4 * mm)]
     for line in body.splitlines():
