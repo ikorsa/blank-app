@@ -121,6 +121,44 @@ def estimate_lvef_from_fs_only(lvidd_mm: float, lvids_mm: float) -> LvefEstimate
 
 
 @dataclass(frozen=True)
+class LvefComparison:
+    simpson: LvefEstimate
+    teichholz: LvefEstimate
+    difference_percent: float
+    consistent: bool
+    recommendation: str
+
+
+def compare_simpson_and_teichholz(
+    edv_ml: float,
+    esv_ml: float,
+    lvidd_mm: float,
+    lvids_mm: float,
+) -> LvefComparison:
+    simpson = estimate_lvef_simpson(edv_ml, esv_ml)
+    teichholz = estimate_lvef_teichholz(lvidd_mm, lvids_mm)
+    difference = abs(simpson.lvef_percent - teichholz.lvef_percent)
+    consistent = difference <= 10.0
+    if consistent:
+        recommendation = (
+            f"Методы согласуются (расхождение {difference:.1f} п.п.). "
+            "Предпочтительно использовать Симпсон как объёмный стандарт."
+        )
+    else:
+        recommendation = (
+            f"Расхождение {difference:.1f} п.п. — вероятна асинергия, аневризма или неточность линейных размеров. "
+            "Для клинических решений опирайтесь на Симпсон и заключение врача ЭхоКГ."
+        )
+    return LvefComparison(
+        simpson=simpson,
+        teichholz=teichholz,
+        difference_percent=round(difference, 1),
+        consistent=consistent,
+        recommendation=recommendation,
+    )
+
+
+@dataclass(frozen=True)
 class ClinicalHfRisk:
     score: int
     risk_label: str
@@ -138,6 +176,8 @@ def predict_reduced_lvef_clinical(
     qrs_ms: int,
     nt_probnp_pg_ml: float | None,
     hypertension: bool,
+    dyspnea: bool = False,
+    peripheral_edema: bool = False,
 ) -> ClinicalHfRisk:
     """Simplified clinical score for pre-test probability of reduced LVEF (<50%)."""
     if age < 18:
@@ -170,6 +210,12 @@ def predict_reduced_lvef_clinical(
     if hypertension:
         score += 1
         factors.append("Артериальная гипертония (+1)")
+    if dyspnea:
+        score += 2
+        factors.append("Одышка при нагрузке (+2)")
+    if peripheral_edema:
+        score += 2
+        factors.append("Отёки нижних конечностей (+2)")
     if qrs_ms >= 120:
         score += 2
         factors.append("QRS ≥120 мс (+2)")

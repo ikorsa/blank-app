@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from clinical.pdf_export import build_text_pdf
+from clinical.report_text import format_sample_size_report
 from clinical.sample_size import (
     SampleSizeResult,
     sample_size_noninferiority_proportions,
@@ -73,7 +75,7 @@ def render_common_parameters() -> dict:
     }
 
 
-def render_result(result: SampleSizeResult) -> None:
+def render_result(result: SampleSizeResult, author: str) -> None:
     st.success("Расчёт выполнен")
     c1, c2, c3 = st.columns(3)
     c1.metric("Контроль", result.n_per_group_control)
@@ -86,6 +88,14 @@ def render_result(result: SampleSizeResult) -> None:
             result.n_total_with_dropout,
             help=f"Запас на выбывание {result.dropout_rate:.0%}",
         )
+
+    report_text = format_sample_size_report(result, author=author)
+    st.download_button(
+        "Скачать PDF",
+        data=build_text_pdf(report_text, "Расчёт выборки КИ"),
+        file_name="sample_size_report.pdf",
+        mime="application/pdf",
+    )
 
     with st.expander("Параметры расчёта", expanded=False):
         st.write(f"**Дизайн:** {result.design}")
@@ -236,6 +246,7 @@ def main() -> None:
             format_func=lambda key: DESIGN_OPTIONS[key],
         )
         st.divider()
+        author = st.text_input("ФИО исполнителя (для PDF)", value="")
         st.caption("Сервис: ikorsakov.tech:8080")
         st.caption("Результат носит ориентировочный характер.")
 
@@ -243,7 +254,7 @@ def main() -> None:
     result = calculate(design, common)
     if result:
         st.divider()
-        render_result(result)
+        render_result(result, author)
 
     with st.expander("Справка по методологии"):
         render_methodology()
