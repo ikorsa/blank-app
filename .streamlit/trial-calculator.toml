@@ -1,0 +1,5 @@
+[server]
+address = "127.0.0.1"
+port = 8081
+headless = true
+maxUploadSize = 5

@@ -1,0 +1,17 @@
+[Unit]
+Description=MD Choice T2DM drug choice CDSS (Streamlit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anamnes
+Group=anamnes
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/md-choice.env
+ExecStart=/opt/anamnes/.venv/bin/streamlit run md_choice_app.py --config .streamlit/md-choice.toml --server.address=127.0.0.1 --server.port=7771 --server.headless=true
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

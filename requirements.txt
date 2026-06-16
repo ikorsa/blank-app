@@ -1,2 +1,6 @@
 streamlit
 reportlab
+scipy
+statsmodels
+scikit-learn
+python-docx
