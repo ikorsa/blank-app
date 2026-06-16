@@ -1,0 +1,17 @@
+[Unit]
+Description=LVEF prediction Streamlit app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anamnes
+Group=anamnes
+WorkingDirectory=/opt/anamnes
+EnvironmentFile=/etc/lvef.env
+ExecStart=/opt/anamnes/.venv/bin/streamlit run lvef_app.py --config .streamlit/lvef.toml --server.address=127.0.0.1 --server.port=9991 --server.headless=true
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

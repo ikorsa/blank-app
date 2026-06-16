@@ -298,3 +298,15 @@ streamlit run trial_calculator_app.py --server.port=8080
 ```
 
 Продакшен: http://ikorsakov.tech:8080/ — см. [deploy/TRIAL_CALCULATOR.md](deploy/TRIAL_CALCULATOR.md).
+
+## Прогнозирование ФВ ЛЖ
+
+Сервис оценки фракции выброса левого желудочка:
+
+```bash
+streamlit run lvef_app.py --server.port=9999
+```
+
+Продакшен: http://ikorsakov.tech:9999/ — см. [deploy/LVEF.md](deploy/LVEF.md).
+
+Медицинский отчёт за 2026 год: [docs/MEDICAL_REPORT_2026.md](docs/MEDICAL_REPORT_2026.md).
