@@ -13,10 +13,13 @@ REPORT_MD = ROOT / "docs" / "MEDICAL_REPORT_2026.md"
 OUTPUT_HTML = ROOT / "docs" / "MEDICAL_REPORT_2026.html"
 
 
+REPORT_TITLE = "Отчёт о проделанной работе"
+
+
 def main() -> None:
     body = REPORT_MD.read_text(encoding="utf-8")
     OUTPUT_HTML.write_text(
-        build_markdown_html(body, "Отчёт по медицинской деятельности — 2026"),
+        build_markdown_html(body, REPORT_TITLE),
         encoding="utf-8",
     )
     print(f"Saved: {OUTPUT_HTML}")

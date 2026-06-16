@@ -13,9 +13,12 @@ REPORT_MD = ROOT / "docs" / "MEDICAL_REPORT_2026.md"
 OUTPUT_DOCX = ROOT / "docs" / "MEDICAL_REPORT_2026.docx"
 
 
+REPORT_TITLE = "Отчёт о проделанной работе"
+
+
 def main() -> None:
     body = REPORT_MD.read_text(encoding="utf-8")
-    docx = build_markdown_docx(body, "Отчёт по медицинской деятельности — 2026")
+    docx = build_markdown_docx(body, REPORT_TITLE)
     OUTPUT_DOCX.write_bytes(docx)
     print(f"Saved: {OUTPUT_DOCX}")
 
