@@ -7,29 +7,58 @@ from io import BytesIO
 
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from docx.shared import Cm, Pt, RGBColor
+from docx.oxml.ns import qn
+from docx.shared import Cm, Pt
+
+
+def _clean_text(text: str) -> str:
+    text = text.replace("\u00a0", " ")
+    text = text.replace("—", "-")
+    text = text.replace("–", "-")
+    return text.strip()
 
 
 def _strip_inline_markup(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"`(.+?)`", r"\1", text)
-    return text.strip()
+    return _clean_text(text)
+
+
+def _set_run_font(run, *, bold: bool = False, italic: bool = False, mono: bool = False) -> None:
+    run.bold = bold
+    run.italic = italic
+    run.font.size = Pt(12)
+    if mono:
+        run.font.name = "Courier New"
+    else:
+        run.font.name = "Times New Roman"
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+
+
+def _add_title(document: Document, text: str) -> None:
+    paragraph = document.add_paragraph()
+    paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    run = paragraph.add_run(_strip_inline_markup(text))
+    _set_run_font(run, bold=True)
+    run.font.size = Pt(16)
 
 
 def _add_rich_paragraph(document: Document, text: str, *, style: str | None = None) -> None:
     paragraph = document.add_paragraph(style=style)
+    text = _clean_text(text)
     parts = re.split(r"(\*\*.+?\*\*|`[^`]+`)", text)
     for part in parts:
         if not part:
             continue
         if part.startswith("**") and part.endswith("**"):
             run = paragraph.add_run(part[2:-2])
-            run.bold = True
+            _set_run_font(run, bold=True)
         elif part.startswith("`") and part.endswith("`"):
             run = paragraph.add_run(part[1:-1])
-            run.font.name = "Courier New"
+            _set_run_font(run, mono=True)
         else:
-            paragraph.add_run(part)
+            run = paragraph.add_run(part)
+            _set_run_font(run)
 
 
 def _is_table_row(line: str) -> bool:
@@ -47,7 +76,6 @@ def _parse_table_row(line: str) -> list[str]:
 
 def build_markdown_docx(markdown_text: str, title: str) -> bytes:
     document = Document()
-
     section = document.sections[0]
     section.top_margin = Cm(2)
     section.bottom_margin = Cm(2)
@@ -58,8 +86,7 @@ def build_markdown_docx(markdown_text: str, title: str) -> bytes:
     normal.font.name = "Times New Roman"
     normal.font.size = Pt(12)
 
-    title_paragraph = document.add_heading(title, level=0)
-    title_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    _add_title(document, title)
 
     lines = markdown_text.splitlines()
     i = 0
@@ -69,11 +96,7 @@ def build_markdown_docx(markdown_text: str, title: str) -> bytes:
         line = lines[i]
         stripped = line.strip()
 
-        if not stripped:
-            i += 1
-            continue
-
-        if stripped == "---":
+        if not stripped or stripped == "---":
             i += 1
             continue
 
@@ -110,11 +133,14 @@ def build_markdown_docx(markdown_text: str, title: str) -> bytes:
                 for r_idx, row in enumerate(table_rows):
                     for c_idx, cell_text in enumerate(row):
                         cell = table.rows[r_idx].cells[c_idx]
-                        cell.text = cell_text
+                        cell.text = ""
+                        paragraph = cell.paragraphs[0]
                         if r_idx == 0:
-                            for paragraph in cell.paragraphs:
-                                for run in paragraph.runs:
-                                    run.bold = True
+                            run = paragraph.add_run(cell_text)
+                            _set_run_font(run, bold=True)
+                        else:
+                            run = paragraph.add_run(cell_text)
+                            _set_run_font(run)
                 document.add_paragraph()
             continue
 
@@ -131,14 +157,13 @@ def build_markdown_docx(markdown_text: str, title: str) -> bytes:
 
         if stripped.startswith("> "):
             quote = stripped[2:]
-            if "python scripts" in quote.lower():
+            if "python scripts" in quote.lower() or "docs/MEDICAL" in quote:
                 i += 1
                 continue
             paragraph = document.add_paragraph()
             paragraph.paragraph_format.left_indent = Cm(1)
             run = paragraph.add_run(_strip_inline_markup(quote))
-            run.italic = True
-            run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+            _set_run_font(run, italic=True)
             i += 1
             continue
 
