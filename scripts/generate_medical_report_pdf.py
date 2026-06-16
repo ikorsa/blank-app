@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from clinical.pdf_export import build_text_pdf
+from clinical.pdf_export import build_markdown_pdf
 
 REPORT_MD = ROOT / "docs" / "MEDICAL_REPORT_2026.md"
 OUTPUT_PDF = ROOT / "docs" / "MEDICAL_REPORT_2026.pdf"
@@ -15,7 +15,7 @@ OUTPUT_PDF = ROOT / "docs" / "MEDICAL_REPORT_2026.pdf"
 
 def main() -> None:
     body = REPORT_MD.read_text(encoding="utf-8")
-    pdf = build_text_pdf(body, "Отчёт по медицинской деятельности — 2026")
+    pdf = build_markdown_pdf(body, "Отчёт по медицинской деятельности — 2026")
     OUTPUT_PDF.write_bytes(pdf)
     print(f"Saved: {OUTPUT_PDF}")
 

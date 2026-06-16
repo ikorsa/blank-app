@@ -1,16 +1,18 @@
-"""Shared PDF export for clinical calculators."""
+"""Markdown to PDF conversion for medical reports."""
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 PDF_FONT_NAME = "DejaVuSans"
 
@@ -28,30 +30,120 @@ def register_pdf_font() -> str:
     return "Helvetica"
 
 
-def _escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def _inline_markup(text: str) -> str:
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"`(.+?)`", r"<font name='Courier'>\1</font>", text)
+    return text
 
 
-def build_text_pdf(body: str, title: str) -> bytes:
-    buffer = BytesIO()
+def _is_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|") and "|" in stripped[1:]
+
+
+def _is_separator_row(line: str) -> bool:
+    return bool(re.fullmatch(r"\|?[\s:\-|]+\|?", line.strip()))
+
+
+def _parse_table_row(line: str) -> list[str]:
+    parts = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return [_inline_markup(cell) for cell in parts]
+
+
+def _make_styles(font_name: str) -> dict[str, ParagraphStyle]:
+    base = getSampleStyleSheet()
+    return {
+        "h1": ParagraphStyle(
+            "MdH1",
+            parent=base["Heading1"],
+            fontName=font_name,
+            fontSize=18,
+            leading=22,
+            spaceBefore=6,
+            spaceAfter=10,
+        ),
+        "h2": ParagraphStyle(
+            "MdH2",
+            parent=base["Heading2"],
+            fontName=font_name,
+            fontSize=14,
+            leading=18,
+            spaceBefore=10,
+            spaceAfter=6,
+        ),
+        "h3": ParagraphStyle(
+            "MdH3",
+            parent=base["Heading3"],
+            fontName=font_name,
+            fontSize=12,
+            leading=15,
+            spaceBefore=8,
+            spaceAfter=4,
+        ),
+        "normal": ParagraphStyle(
+            "MdNormal",
+            parent=base["Normal"],
+            fontName=font_name,
+            fontSize=10,
+            leading=14,
+            spaceAfter=4,
+        ),
+        "bullet": ParagraphStyle(
+            "MdBullet",
+            parent=base["Normal"],
+            fontName=font_name,
+            fontSize=10,
+            leading=14,
+            leftIndent=12,
+            bulletIndent=0,
+            spaceAfter=2,
+        ),
+        "quote": ParagraphStyle(
+            "MdQuote",
+            parent=base["Normal"],
+            fontName=font_name,
+            fontSize=10,
+            leading=14,
+            leftIndent=14,
+            textColor=colors.HexColor("#333333"),
+            spaceAfter=6,
+        ),
+    }
+
+
+def _table_from_rows(rows: list[list[str]], styles: dict[str, ParagraphStyle]) -> Table:
+    wrapped = [
+        [Paragraph(cell, styles["normal"]) for cell in row]
+        for row in rows
+    ]
+    col_count = max(len(row) for row in wrapped)
+    available = 174 * mm
+    col_width = available / col_count
+    table = Table(wrapped, colWidths=[col_width] * col_count, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), styles["normal"].fontName),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF7")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1A1A1A")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#B0B8C4")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return table
+
+
+def build_markdown_pdf(markdown_text: str, title: str) -> bytes:
     font_name = register_pdf_font()
-    styles = getSampleStyleSheet()
-    normal = ParagraphStyle(
-        "ClinicalNormal",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=10,
-        leading=14,
-        spaceAfter=4,
-    )
-    heading = ParagraphStyle(
-        "ClinicalHeading",
-        parent=styles["Heading1"],
-        fontName=font_name,
-        fontSize=14,
-        leading=18,
-        spaceAfter=8,
-    )
+    styles = _make_styles(font_name)
+    buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -60,9 +152,99 @@ def build_text_pdf(body: str, title: str) -> bytes:
         topMargin=16 * mm,
         bottomMargin=16 * mm,
     )
-    story = [Paragraph(_escape(title), heading), Spacer(1, 4 * mm)]
+
+    story: list = [Paragraph(_inline_markup(title), styles["h1"]), Spacer(1, 4 * mm)]
+    lines = markdown_text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if not stripped:
+            story.append(Spacer(1, 2 * mm))
+            i += 1
+            continue
+
+        if stripped == "---":
+            story.append(Spacer(1, 3 * mm))
+            i += 1
+            continue
+
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            story.append(Paragraph(_inline_markup(stripped[2:]), styles["h1"]))
+            i += 1
+            continue
+
+        if stripped.startswith("## "):
+            story.append(Paragraph(_inline_markup(stripped[3:]), styles["h2"]))
+            i += 1
+            continue
+
+        if stripped.startswith("### "):
+            story.append(Paragraph(_inline_markup(stripped[4:]), styles["h3"]))
+            i += 1
+            continue
+
+        if _is_table_row(stripped):
+            table_rows: list[list[str]] = []
+            while i < len(lines) and _is_table_row(lines[i].strip()):
+                row_line = lines[i].strip()
+                if not _is_separator_row(row_line):
+                    table_rows.append(_parse_table_row(row_line))
+                i += 1
+            if table_rows:
+                story.append(_table_from_rows(table_rows, styles))
+                story.append(Spacer(1, 3 * mm))
+            continue
+
+        if stripped.startswith("- "):
+            story.append(Paragraph(f"• {_inline_markup(stripped[2:])}", styles["bullet"]))
+            i += 1
+            continue
+
+        numbered = re.match(r"^(\d+)\.\s+(.+)$", stripped)
+        if numbered:
+            story.append(
+                Paragraph(
+                    f"{numbered.group(1)}. {_inline_markup(numbered.group(2))}",
+                    styles["bullet"],
+                )
+            )
+            i += 1
+            continue
+
+        if stripped.startswith("> "):
+            quote = stripped[2:]
+            if "python scripts" in quote.lower():
+                i += 1
+                continue
+            story.append(Paragraph(_inline_markup(quote), styles["quote"]))
+            i += 1
+            continue
+
+        story.append(Paragraph(_inline_markup(stripped), styles["normal"]))
+        i += 1
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def build_text_pdf(body: str, title: str) -> bytes:
+    """Plain text lines to PDF (for calculator exports)."""
+    font_name = register_pdf_font()
+    styles = _make_styles(font_name)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+    )
+    story = [Paragraph(_inline_markup(title), styles["h1"]), Spacer(1, 4 * mm)]
     for line in body.splitlines():
         text = line if line.strip() else "&nbsp;"
-        story.append(Paragraph(_escape(text), normal))
+        story.append(Paragraph(_inline_markup(text), styles["normal"]))
     doc.build(story)
     return buffer.getvalue()
