@@ -310,3 +310,13 @@ streamlit run lvef_app.py --server.port=9999
 Продакшен: http://ikorsakov.tech:9999/ — см. [deploy/LVEF.md](deploy/LVEF.md).
 
 Медицинский отчёт за 2026 год: [docs/MEDICAL_REPORT_2026.md](docs/MEDICAL_REPORT_2026.md).
+
+## MD Choice — выбор препарата при СД2
+
+Система поддержки принятия решений на основе ML:
+
+```bash
+streamlit run md_choice_app.py --server.port=7777
+```
+
+Продакшен: http://ikorsakov.tech:7777/ — см. [deploy/MD_CHOICE.md](deploy/MD_CHOICE.md).

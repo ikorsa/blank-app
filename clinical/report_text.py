@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from clinical.lvef import ClinicalHfRisk, LvefComparison, LvefEstimate
+from clinical.md_choice import MdChoiceResult
 from clinical.sample_size import SampleSizeResult
 
 
@@ -133,6 +134,46 @@ def format_lvef_comparison_report(comparison: LvefComparison, *, author: str = "
             "",
             "РЕКОМЕНДАЦИЯ",
             comparison.recommendation,
+        ]
+    )
+    return "\n".join(lines)
+
+
+def format_md_choice_report(result: MdChoiceResult, *, author: str = "") -> str:
+    lines = [
+        f"Дата расчёта: {_timestamp()}",
+        f"Сервис: ikorsakov.tech:7777",
+        "MD Choice — прогнозирование выбора препарата при СД2",
+    ]
+    if author.strip():
+        lines.append(f"Врач: {author.strip()}")
+    lines.extend(
+        [
+            "",
+            "РЕКОМЕНДАЦИЯ",
+            f"Препарат (класс): {result.primary.drug_class}",
+            f"Вероятность модели: {result.primary.score}%",
+            "",
+            "ОБОСНОВАНИЕ",
+        ]
+    )
+    for reason in result.primary.rationale:
+        lines.append(f"- {reason}")
+    if result.warnings:
+        lines.append("")
+        lines.append("ПРЕДУПРЕЖДЕНИЯ")
+        for item in result.warnings:
+            lines.append(f"- {item}")
+    lines.append("")
+    lines.append("АЛЬТЕРНАТИВЫ")
+    for alt in result.alternatives:
+        lines.append(f"- {alt.drug_class}: {alt.score}%")
+    lines.extend(
+        [
+            "",
+            f"Модель: {result.model_name}",
+            "",
+            "Система поддержки принятия решений. Не является назначением лечения.",
         ]
     )
     return "\n".join(lines)

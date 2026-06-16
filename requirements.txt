@@ -2,3 +2,4 @@ streamlit
 reportlab
 scipy
 statsmodels
+scikit-learn
